@@ -22,3 +22,6 @@ frontend/.env.production
 
 # OS
 Thumbs.db
+backend/.classpath
+backend/.project
+backend/.settings/

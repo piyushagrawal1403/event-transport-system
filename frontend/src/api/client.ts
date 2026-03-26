@@ -62,6 +62,9 @@ export const getTripRides = (magicLinkId: string) =>
 export const getCabs = () =>
   api.get<Cab[]>('/api/v1/cabs');
 
+export const getCabActiveRides = (cabId: number) =>
+  api.get<RideRequest[]>(`/api/v1/rides/cab/${cabId}`);
+
 export const getLocations = () =>
   api.get<Location[]>('/api/v1/locations');
 

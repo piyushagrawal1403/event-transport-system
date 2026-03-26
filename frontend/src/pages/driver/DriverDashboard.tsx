@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Car, Phone, LogIn } from 'lucide-react';
-import { getCabs, type Cab } from '../../api/client';
+import { Car, Phone, LogIn, Navigation, MapPin } from 'lucide-react';
+import { getCabs, getCabActiveRides, type Cab, type RideRequest } from '../../api/client';
 
 export default function DriverDashboard() {
   const [phone, setPhone] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
   const [, setCabs] = useState<Cab[]>([]);
   const [myCab, setMyCab] = useState<Cab | null>(null);
+  const [activeTrips, setActiveTrips] = useState<RideRequest[]>([]);
+
+  const normalizePhone = (p: string) => p.replace(/[^\d+]/g, '');
 
   useEffect(() => {
     const savedPhone = localStorage.getItem('driverPhone');
@@ -23,8 +26,16 @@ export default function DriverDashboard() {
       try {
         const res = await getCabs();
         setCabs(res.data);
-        const found = res.data.find(c => c.driverPhone === phone);
+        const normalizedInput = normalizePhone(phone);
+        const found = res.data.find(c => normalizePhone(c.driverPhone) === normalizedInput);
         setMyCab(found || null);
+
+        if (found && found.status === 'BUSY') {
+          const ridesRes = await getCabActiveRides(found.id);
+          setActiveTrips(ridesRes.data);
+        } else {
+          setActiveTrips([]);
+        }
       } catch {
         // Retry
       }
@@ -134,6 +145,40 @@ export default function DriverDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Active Trip Info */}
+            {myCab.status === 'BUSY' && activeTrips.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-indigo-600" />
+                  Active Trip
+                </h3>
+                {activeTrips.map((ride) => (
+                  <div key={ride.id} className="bg-indigo-50 rounded-lg p-3 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-indigo-500" />
+                      <span className="font-medium text-gray-800">{ride.location.name}</span>
+                    </div>
+                    <p className="text-sm text-gray-600">{ride.passengerCount} passengers · {ride.direction === 'TO_VENUE' ? 'To Venue' : 'To Hotel'}</p>
+                    <p className="text-sm text-gray-600">Guest: {ride.guestName} ({ride.guestPhone})</p>
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                      ride.status === 'ASSIGNED' ? 'bg-blue-100 text-blue-700' :
+                      ride.status === 'IN_TRANSIT' ? 'bg-indigo-100 text-indigo-700' :
+                      ride.status === 'ARRIVED' ? 'bg-green-100 text-green-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>{ride.status}</span>
+                    {ride.magicLinkId && (
+                      <a
+                        href={`/d/${ride.magicLinkId}`}
+                        className="block mt-2 text-center py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
+                      >
+                        Open Trip Link
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <p className="text-xs text-gray-400 text-center">
               You will receive trip assignments via SMS/WhatsApp with a link to complete rides.

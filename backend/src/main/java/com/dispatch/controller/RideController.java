@@ -39,4 +39,9 @@ public class RideController {
     public ResponseEntity<List<RideRequest>> getTripRides(@PathVariable String magicLinkId) {
         return ResponseEntity.ok(rideService.getRidesByMagicLink(magicLinkId));
     }
+
+    @GetMapping("/cab/{cabId}")
+    public ResponseEntity<List<RideRequest>> getCabActiveRides(@PathVariable Long cabId) {
+        return ResponseEntity.ok(rideService.getActiveRidesByCab(cabId));
+    }
 }

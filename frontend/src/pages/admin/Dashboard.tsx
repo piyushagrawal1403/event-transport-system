@@ -20,7 +20,7 @@ interface LocationGroup {
 export default function Dashboard() {
   const [groups, setGroups] = useState<LocationGroup[]>([]);
   const [cabs, setCabs] = useState<Cab[]>([]);
-  const [selectedRides, setSelectedRides] = useState<Set<number>>(new Set());
+  const [selectedRides, setSelectedRides] = useState<Map<number, number>>(new Map()); // rideId -> passengerCount
   const [selectedCabId, setSelectedCabId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
@@ -87,13 +87,13 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const toggleRide = (rideId: number) => {
+  const toggleRide = (rideId: number, paxCount: number) => {
     setSelectedRides(prev => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       if (next.has(rideId)) {
         next.delete(rideId);
       } else {
-        next.add(rideId);
+        next.set(rideId, paxCount);
       }
       return next;
     });
@@ -101,12 +101,17 @@ export default function Dashboard() {
 
   const handleAssign = async () => {
     if (selectedRides.size === 0 || !selectedCabId) return;
+    const totalPax = Array.from(selectedRides.values()).reduce((s, p) => s + p, 0);
+    const cab = cabs.find(c => c.id === selectedCabId);
+    if (cab && totalPax > cab.capacity) {
+      if (!confirm(`Selected ${totalPax} passengers exceeds cab capacity (${cab.capacity}). Assign anyway?`)) return;
+    }
 
     setAssigning(true);
     try {
       const res = await assignRides({
         cabId: selectedCabId,
-        rideIds: Array.from(selectedRides),
+        rideIds: Array.from(selectedRides.keys()),
       });
       setAssignResult({ magicLinkId: res.data.magicLinkId, otp: res.data.otp });
 
@@ -118,7 +123,7 @@ export default function Dashboard() {
       console.log(`OTP: ${res.data.otp}`);
       console.log('===================');
 
-      setSelectedRides(new Set());
+      setSelectedRides(new Map());
       setSelectedCabId(null);
       await fetchData();
 
@@ -133,11 +138,7 @@ export default function Dashboard() {
 
   const availableCabs = cabs.filter(c => c.status === 'AVAILABLE');
 
-  const selectedPaxCount = groups
-    .flatMap(g => g.rides)
-    .filter(r => selectedRides.has(r.id))
-    .reduce((sum, r) => sum + r.passengerCount, 0);
-
+  const selectedPaxCount = Array.from(selectedRides.values()).reduce((sum, pax) => sum + pax, 0);
   const selectedCab = cabs.find(c => c.id === selectedCabId);
   const isOverCapacity = selectedCab ? selectedPaxCount > selectedCab.capacity : false;
 
@@ -254,7 +255,7 @@ export default function Dashboard() {
                       <input
                         type="checkbox"
                         checked={selectedRides.has(ride.id)}
-                        onChange={() => toggleRide(ride.id)}
+                        onChange={() => toggleRide(ride.id, ride.passengerCount)}
                         className="w-5 h-5 rounded border-gray-600 text-blue-500 focus:ring-blue-500 bg-gray-700"
                       />
                       <div className="flex-1 min-w-0">
@@ -297,10 +298,12 @@ export default function Dashboard() {
             <div className="space-y-3">
               <div>
                 <label className="text-sm text-gray-400 block mb-1">Selected Rides</label>
-                <div className="text-2xl font-bold">{selectedRides.size}</div>
-                {selectedRides.size > 0 && (
-                  <p className="text-sm text-gray-400 mt-0.5">{selectedPaxCount} total passengers</p>
-                )}
+                <div className="text-2xl font-bold">
+                  {selectedRides.size}
+                  {selectedRides.size > 0 && (
+                    <span className="text-base font-normal text-yellow-400 ml-2">({selectedPaxCount} pax)</span>
+                  )}
+                </div>
               </div>
 
               <div>

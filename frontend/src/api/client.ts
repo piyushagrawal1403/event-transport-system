@@ -59,6 +59,15 @@ export const getGuestRides = (phone: string) =>
 export const getTripRides = (magicLinkId: string) =>
   api.get<RideRequest[]>(`/api/v1/rides/trip/${magicLinkId}`);
 
+export const getDriverRides = (phone: string) =>
+  api.get<RideRequest[]>('/api/v1/rides/driver', { params: { phone } });
+
+export const getCurrentRides = () =>
+  api.get<RideRequest[]>('/api/v1/rides/current');
+
+export const getAssignedRides = () =>
+  api.get<RideRequest[]>('/api/v1/rides/assigned');
+
 export const getCabs = () =>
   api.get<Cab[]>('/api/v1/cabs');
 

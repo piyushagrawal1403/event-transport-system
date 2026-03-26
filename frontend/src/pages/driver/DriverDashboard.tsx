@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Car, Phone, LogIn } from 'lucide-react';
-import { getCabs, type Cab } from '../../api/client';
+import { Car, Phone, LogIn, Users, MapPin } from 'lucide-react';
+import { getCabs, getDriverRides, type Cab, type RideRequest } from '../../api/client';
 
 export default function DriverDashboard() {
   const [phone, setPhone] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
   const [, setCabs] = useState<Cab[]>([]);
   const [myCab, setMyCab] = useState<Cab | null>(null);
+  const [assignedRides, setAssignedRides] = useState<RideRequest[]>([]);
 
   useEffect(() => {
     const savedPhone = localStorage.getItem('driverPhone');
@@ -30,8 +31,21 @@ export default function DriverDashboard() {
       }
     };
 
+    const fetchRides = async () => {
+      try {
+        const res = await getDriverRides(phone);
+        setAssignedRides(res.data);
+      } catch {
+        // Retry
+      }
+    };
+
     fetchCabs();
-    const interval = setInterval(fetchCabs, 10000);
+    fetchRides();
+    const interval = setInterval(() => {
+      fetchCabs();
+      fetchRides();
+    }, 10000);
     return () => clearInterval(interval);
   }, [loggedIn, phone]);
 
@@ -134,6 +148,51 @@ export default function DriverDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Assigned Guests */}
+            {assignedRides.length > 0 ? (
+              <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-indigo-600" />
+                  <h3 className="font-semibold text-gray-800">Assigned Guests ({assignedRides.length})</h3>
+                </div>
+                <div className="space-y-3">
+                  {assignedRides.map((ride) => (
+                    <div key={ride.id} className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-lg p-3 border border-indigo-100">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="font-semibold text-gray-800">{ride.guestName}</p>
+                          <p className="text-sm text-gray-600">{ride.guestPhone}</p>
+                        </div>
+                        <span className={`text-xs font-bold px-2 py-1 rounded ${
+                          ride.status === 'ASSIGNED' ? 'bg-blue-100 text-blue-700' :
+                          ride.status === 'IN_TRANSIT' ? 'bg-amber-100 text-amber-700' :
+                          'bg-green-100 text-green-700'
+                        }`}>
+                          {ride.status}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-gray-500" />
+                          <span className="text-sm text-gray-700">{ride.passengerCount} passenger{ride.passengerCount !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-gray-500" />
+                          <div className="text-sm text-gray-700">
+                            <span>{ride.direction === 'TO_VENUE' ? '→ Venue' : '← Hotel'}: {ride.location.name}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                <p className="text-sm text-blue-800">No active rides assigned. You'll see guest details here once rides are assigned.</p>
+              </div>
+            )}
 
             <p className="text-xs text-gray-400 text-center">
               You will receive trip assignments via SMS/WhatsApp with a link to complete rides.

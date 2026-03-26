@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Car, Users, Clock, MapPin, CheckCircle2, AlertTriangle,
-  RefreshCw, Send, ChevronDown, ChevronUp
+  RefreshCw, Send, ChevronDown, ChevronUp, Phone, Lock, TrendingRight
 } from 'lucide-react';
 import {
-  getPendingRides, getCabs, assignRides,
+  getPendingRides, getCabs, assignRides, getCurrentRides, getAssignedRides,
   type RideRequest, type Cab
 } from '../../api/client';
 
@@ -20,6 +20,8 @@ interface LocationGroup {
 export default function Dashboard() {
   const [groups, setGroups] = useState<LocationGroup[]>([]);
   const [cabs, setCabs] = useState<Cab[]>([]);
+  const [currentRides, setCurrentRides] = useState<RideRequest[]>([]);
+  const [assignedRides, setAssignedRides] = useState<RideRequest[]>([]);
   const [selectedRides, setSelectedRides] = useState<Set<number>>(new Set());
   const [selectedCabId, setSelectedCabId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,8 +34,15 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [ridesRes, cabsRes] = await Promise.all([getPendingRides(), getCabs()]);
+      const [ridesRes, cabsRes, currentRes, assignedRes] = await Promise.all([
+        getPendingRides(),
+        getCabs(),
+        getCurrentRides(),
+        getAssignedRides()
+      ]);
       setCabs(cabsRes.data);
+      setCurrentRides(currentRes.data);
+      setAssignedRides(assignedRes.data);
 
       const now = new Date();
       const groupMap = new Map<number, LocationGroup>();
@@ -155,7 +164,7 @@ export default function Dashboard() {
           <div>
             <h1 className="text-xl font-bold">Dispatch Dashboard</h1>
             <p className="text-gray-400 text-sm">
-              {groups.reduce((sum, g) => sum + g.rides.length, 0)} pending rides · {availableCabs.length} cabs available
+              {groups.reduce((sum, g) => sum + g.rides.length, 0)} pending · {assignedRides.length} assigned · {currentRides.length - assignedRides.length} in-transit · {availableCabs.length} cabs
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -184,9 +193,146 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Queue Column */}
-        <div className="lg:col-span-2 space-y-4">
+      <div className="max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Queue & Current Rides Column */}
+        <div className="lg:col-span-3 space-y-4">
+          {/* Current Rides Section */}
+          {currentRides.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <TrendingRight className="w-5 h-5 text-green-400" />
+                Active Rides ({currentRides.length})
+              </h2>
+              <div className="grid gap-3 max-h-96 overflow-y-auto">
+                {currentRides.map((ride) => (
+                  <div
+                    key={ride.id}
+                    className="bg-gradient-to-r from-green-900/40 to-blue-900/40 rounded-lg border border-green-600/30 p-3"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-white">{ride.guestName}</span>
+                          <span className={`text-xs font-bold px-2 py-1 rounded ${
+                            ride.status === 'ASSIGNED' ? 'bg-blue-600 text-blue-100' :
+                            ride.status === 'IN_TRANSIT' ? 'bg-amber-600 text-amber-100' :
+                            'bg-green-600 text-green-100'
+                          }`}>
+                            {ride.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-300 mb-2">{ride.guestPhone}</p>
+                      </div>
+                      {ride.dropoffOtp && (
+                        <div className="bg-gray-900/80 px-3 py-1.5 rounded flex items-center gap-2">
+                          <Lock className="w-3 h-3 text-yellow-400" />
+                          <span className="text-sm font-mono font-bold text-yellow-400">{ride.dropoffOtp}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                      <div className="bg-gray-900/60 rounded p-2">
+                        <p className="text-gray-400">Passengers</p>
+                        <p className="font-semibold text-white">{ride.passengerCount}</p>
+                      </div>
+                      <div className="bg-gray-900/60 rounded p-2">
+                        <p className="text-gray-400">Direction</p>
+                        <p className="font-semibold text-white">{ride.direction === 'TO_VENUE' ? '→ Venue' : '← Hotel'}</p>
+                      </div>
+                      <div className="bg-gray-900/60 rounded p-2 col-span-2">
+                        <p className="text-gray-400">Location</p>
+                        <p className="font-semibold text-white flex items-center gap-1"><MapPin className="w-3 h-3" />{ride.location.name}</p>
+                      </div>
+                    </div>
+
+                    {ride.cab && (
+                      <div className="bg-gray-900/60 rounded p-2 border-t border-gray-700 pt-2">
+                        <p className="text-xs text-gray-400 mb-1">Driver Info</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="text-xs text-gray-500">Cab</p>
+                            <p className="text-sm font-mono font-bold text-blue-300">{ride.cab.licensePlate}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Driver</p>
+                            <p className="text-sm font-semibold text-blue-300">{ride.cab.driverName}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Phone</p>
+                            <p className="text-sm font-mono text-blue-300 flex items-center gap-1"><Phone className="w-3 h-3" />{ride.cab.driverPhone}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Requested</p>
+                            <p className="text-sm font-mono text-blue-300">{new Date(ride.requestedAt).toLocaleTimeString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Assigned Queue Section */}
+          {assignedRides.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Car className="w-5 h-5 text-blue-400" />
+                Assigned Queue ({assignedRides.length}) - Waiting for Pickup
+              </h2>
+              <div className="bg-gray-800 rounded-xl overflow-hidden border-2 border-blue-500 space-y-0">
+                {assignedRides.map((ride) => {
+                  const waitMins = Math.floor((Date.now() - new Date(ride.requestedAt).getTime()) / 60000);
+                  return (
+                    <div
+                      key={ride.id}
+                      className={`flex items-center justify-between px-4 py-3 border-b border-gray-700 last:border-b-0 hover:bg-gray-750 transition ${
+                        waitMins >= 15 ? 'bg-red-900/20' : 'bg-blue-900/10'
+                      }`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <div className="font-semibold text-white">{ride.guestName}</div>
+                            <div className="text-sm text-gray-400">{ride.guestPhone}</div>
+                          </div>
+                          {ride.cab && (
+                            <div className="text-sm bg-gray-700/50 px-2 py-1 rounded">
+                              <div className="text-xs text-gray-400">Assigned to</div>
+                              <div className="font-mono font-bold text-blue-300">{ride.cab.licensePlate}</div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-gray-400 mt-1">
+                          <span>{ride.passengerCount} pax</span>
+                          <span>•</span>
+                          <span>{ride.direction === 'TO_VENUE' ? '→ Venue' : '→ Hotel'}</span>
+                          <span>•</span>
+                          <span>{ride.location.name}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {ride.dropoffOtp && (
+                          <div className="bg-yellow-900 px-2 py-1 rounded mb-1">
+                            <div className="text-xs text-gray-400">OTP</div>
+                            <div className="font-mono font-bold text-yellow-300">{ride.dropoffOtp}</div>
+                          </div>
+                        )}
+                        <span className={`text-sm font-mono ${waitMins >= 15 ? 'text-red-400' : 'text-gray-500'}`}>
+                          <Clock className="w-3 h-3 inline mr-1" />
+                          {new Date(ride.requestedAt).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Queue Section */}
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-400" />
             Ride Queue

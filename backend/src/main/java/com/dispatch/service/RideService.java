@@ -49,4 +49,18 @@ public class RideService {
     public List<RideRequest> getRidesByMagicLink(String magicLinkId) {
         return rideRequestRepository.findByMagicLinkId(magicLinkId);
     }
+
+    public List<RideRequest> getActiveRidesByDriverPhone(String driverPhone) {
+        return rideRequestRepository.findByCab_DriverPhoneAndStatusIn(driverPhone,
+                Arrays.asList(RideStatus.ASSIGNED, RideStatus.IN_TRANSIT, RideStatus.ARRIVED));
+    }
+
+    public List<RideRequest> getCurrentRides() {
+        return rideRequestRepository.findByStatusIn(
+                Arrays.asList(RideStatus.ASSIGNED, RideStatus.IN_TRANSIT, RideStatus.ARRIVED));
+    }
+
+    public List<RideRequest> getAssignedRides() {
+        return rideRequestRepository.findByStatus(RideStatus.ASSIGNED);
+    }
 }

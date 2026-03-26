@@ -11,7 +11,9 @@ import java.util.Optional;
 @Repository
 public interface RideRequestRepository extends JpaRepository<RideRequest, Long> {
     List<RideRequest> findByStatus(RideStatus status);
+    List<RideRequest> findByStatusIn(List<RideStatus> statuses);
     List<RideRequest> findByGuestPhoneAndStatusIn(String guestPhone, List<RideStatus> statuses);
     List<RideRequest> findByMagicLinkId(String magicLinkId);
     Optional<RideRequest> findFirstByMagicLinkId(String magicLinkId);
+    List<RideRequest> findByCab_DriverPhoneAndStatusIn(String driverPhone, List<RideStatus> statuses);
 }

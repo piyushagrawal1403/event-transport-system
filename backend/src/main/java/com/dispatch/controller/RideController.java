@@ -39,4 +39,19 @@ public class RideController {
     public ResponseEntity<List<RideRequest>> getTripRides(@PathVariable String magicLinkId) {
         return ResponseEntity.ok(rideService.getRidesByMagicLink(magicLinkId));
     }
+
+    @GetMapping("/driver")
+    public ResponseEntity<List<RideRequest>> getDriverRides(@RequestParam String phone) {
+        return ResponseEntity.ok(rideService.getActiveRidesByDriverPhone(phone));
+    }
+
+    @GetMapping("/current")
+    public ResponseEntity<List<RideRequest>> getCurrentRides() {
+        return ResponseEntity.ok(rideService.getCurrentRides());
+    }
+
+    @GetMapping("/assigned")
+    public ResponseEntity<List<RideRequest>> getAssignedRides() {
+        return ResponseEntity.ok(rideService.getAssignedRides());
+    }
 }

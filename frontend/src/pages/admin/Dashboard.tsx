@@ -134,9 +134,11 @@ export default function Dashboard() {
   const availableCabs = cabs.filter(c => c.status === 'AVAILABLE');
 
   const getWaitTime = (requestedAt: string) => {
-    const mins = Math.floor((Date.now() - new Date(requestedAt).getTime()) / 60000);
-    if (mins < 1) return 'Just now';
-    return `${mins}m ago`;
+    const totalSecs = Math.floor((Date.now() - new Date(requestedAt).getTime()) / 1000);
+    if (totalSecs < 60) return `${totalSecs}s`;
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${mins}m ${secs}s`;
   };
 
   if (loading) {
@@ -258,10 +260,15 @@ export default function Dashboard() {
                           <span>{ride.direction === 'TO_VENUE' ? '→ Venue' : '→ Hotel'}</span>
                         </div>
                       </div>
-                      <span className={`text-sm font-mono ${waitMins >= 15 ? 'text-red-400' : 'text-gray-500'}`}>
-                        <Clock className="w-3 h-3 inline mr-1" />
-                        {getWaitTime(ride.requestedAt)}
-                      </span>
+                      <div className={`flex flex-col items-end`}>
+                        <span className={`text-sm font-mono font-bold ${waitMins >= 15 ? 'text-red-400 animate-pulse' : waitMins >= 10 ? 'text-orange-400' : waitMins >= 5 ? 'text-yellow-400' : 'text-gray-300'}`}>
+                          <Clock className="w-4 h-4 inline mr-1" />
+                          {getWaitTime(ride.requestedAt)}
+                        </span>
+                        {waitMins >= 15 && (
+                          <span className="text-xs text-red-400 font-semibold">OVERDUE</span>
+                        )}
+                      </div>
                     </label>
                   );
                 })}

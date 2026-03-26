@@ -133,6 +133,14 @@ export default function Dashboard() {
 
   const availableCabs = cabs.filter(c => c.status === 'AVAILABLE');
 
+  const selectedPaxCount = groups
+    .flatMap(g => g.rides)
+    .filter(r => selectedRides.has(r.id))
+    .reduce((sum, r) => sum + r.passengerCount, 0);
+
+  const selectedCab = cabs.find(c => c.id === selectedCabId);
+  const isOverCapacity = selectedCab ? selectedPaxCount > selectedCab.capacity : false;
+
   const getWaitTime = (requestedAt: string) => {
     const totalSecs = Math.floor((Date.now() - new Date(requestedAt).getTime()) / 1000);
     if (totalSecs < 60) return `${totalSecs}s`;
@@ -290,6 +298,9 @@ export default function Dashboard() {
               <div>
                 <label className="text-sm text-gray-400 block mb-1">Selected Rides</label>
                 <div className="text-2xl font-bold">{selectedRides.size}</div>
+                {selectedRides.size > 0 && (
+                  <p className="text-sm text-gray-400 mt-0.5">{selectedPaxCount} total passengers</p>
+                )}
               </div>
 
               <div>
@@ -308,6 +319,13 @@ export default function Dashboard() {
                 </select>
               </div>
 
+              {isOverCapacity && (
+                <div className="bg-amber-900/30 border border-amber-700 rounded-lg p-3 text-amber-300 text-sm">
+                  <AlertTriangle className="w-4 h-4 inline mr-1" />
+                  {selectedPaxCount} pax selected exceeds cab capacity ({selectedCab?.capacity}). Consider assigning in batches — select fewer rides per cab.
+                </div>
+              )}
+
               <button
                 onClick={handleAssign}
                 disabled={selectedRides.size === 0 || !selectedCabId || assigning}
@@ -315,6 +333,10 @@ export default function Dashboard() {
               >
                 {assigning ? 'Assigning...' : 'Assign & Dispatch'}
               </button>
+
+              {selectedRides.size === 0 && groups.length > 0 && (
+                <p className="text-xs text-gray-500 text-center">Tip: Select rides from the queue, pick a cab, then assign. For split rides (e.g. 6 pax = 4+2), assign each batch to a separate cab.</p>
+              )}
             </div>
           </div>
 

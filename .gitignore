@@ -7,6 +7,9 @@ backend/target/
 .mvn/
 mvnw
 mvnw.cmd
+backend/.classpath
+backend/.project
+backend/.settings/
 
 # Frontend
 frontend/node_modules/

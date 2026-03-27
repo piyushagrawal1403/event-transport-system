@@ -187,8 +187,8 @@ export default function GuestHome() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700">Book a Ride</h2>
-              <button onClick={() => setShowBooking(false)} className="text-sm text-gray-500 flex items-center gap-1">
-                <ChevronUp className="w-4 h-4" /> Hide
+              <button onClick={() => setShowBooking(false)} className="text-sm text-blue-600 font-medium flex items-center gap-1">
+                <ChevronUp className="w-4 h-4" /> Back to Schedule
               </button>
             </div>
 

@@ -5,9 +5,10 @@ import {
 
 } from 'lucide-react';
 import {
-  getPendingRides, getCabs, assignRides, getOngoingRides,
-  type RideRequest, type Cab
+  getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations,
+  type RideRequest, type Cab, type EventItinerary, type Location
 } from '../../api/client';
+import api from '../../api/client';
 
 interface LocationGroup {
   locationId: number;
@@ -29,6 +30,12 @@ export default function Dashboard() {
   const [showFleet, setShowFleet] = useState(true);
   const [assignResult, setAssignResult] = useState<{ magicLinkId: string; otp: string } | null>(null);
   const [ongoingRides, setOngoingRides] = useState<RideRequest[]>([]);
+  const [events, setEvents] = useState<EventItinerary[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [showEvents, setShowEvents] = useState(true);
+  const [showEventForm, setShowEventForm] = useState(false);
+  const [eventForm, setEventForm] = useState({ title: '', description: '', startTime: '', endTime: '', locationId: '' });
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   const DEFAULT_CAB_CAPACITY = 4;
 
@@ -85,11 +92,20 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchEvents = useCallback(async () => {
+    try {
+      const [evRes, locRes] = await Promise.allSettled([getEvents(), getLocations()]);
+      if (evRes.status === 'fulfilled') setEvents(evRes.value.data);
+      if (locRes.status === 'fulfilled') setLocations(locRes.value.data);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchData();
+    fetchEvents();
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, fetchEvents]);
 
   const toggleRide = (rideId: number, paxCount: number) => {
     setSelectedRides(prev => {
@@ -440,6 +456,81 @@ export default function Dashboard() {
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+          {/* Event Management */}
+          <div className="bg-gray-800 rounded-xl border border-gray-700">
+            <button
+              onClick={() => setShowEvents(!showEvents)}
+              className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-750 transition rounded-xl"
+            >
+              <h3 className="font-semibold flex items-center gap-2">
+                <Clock className="w-4 h-4 text-blue-400" />
+                Events ({events.length})
+              </h3>
+              {showEvents ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+
+            {showEvents && (
+              <div className="px-4 pb-4 space-y-2">
+                <button
+                  onClick={() => { setShowEventForm(true); setEditingEventId(null); setEventForm({ title: '', description: '', startTime: '', endTime: '', locationId: locations[0]?.id?.toString() || '' }); }}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition"
+                >
+                  + Add Event
+                </button>
+
+                {showEventForm && (
+                  <div className="bg-gray-700 rounded-lg p-3 space-y-2">
+                    <input value={eventForm.title} onChange={e => setEventForm(f => ({...f, title: e.target.value}))} placeholder="Event Title" className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white placeholder-gray-400 outline-none" />
+                    <input value={eventForm.description} onChange={e => setEventForm(f => ({...f, description: e.target.value}))} placeholder="Description (optional)" className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white placeholder-gray-400 outline-none" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-400">Start</label>
+                        <input type="datetime-local" value={eventForm.startTime} onChange={e => setEventForm(f => ({...f, startTime: e.target.value}))} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400">End</label>
+                        <input type="datetime-local" value={eventForm.endTime} onChange={e => setEventForm(f => ({...f, endTime: e.target.value}))} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
+                      </div>
+                    </div>
+                    <select value={eventForm.locationId} onChange={e => setEventForm(f => ({...f, locationId: e.target.value}))} className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white outline-none">
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                    <div className="flex gap-2">
+                      <button onClick={async () => {
+                        const payload = { title: eventForm.title, description: eventForm.description || null, startTime: eventForm.startTime, endTime: eventForm.endTime, locationId: Number(eventForm.locationId) };
+                        try {
+                          if (editingEventId) { await api.put(`/api/v1/events/${editingEventId}`, payload); }
+                          else { await api.post('/api/v1/events', payload); }
+                          setShowEventForm(false); fetchEvents();
+                        } catch { alert('Failed to save event'); }
+                      }} className="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition">Save</button>
+                      <button onClick={() => setShowEventForm(false)} className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm font-medium transition">Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="max-h-64 overflow-y-auto space-y-1">
+                  {events.map(ev => (
+                    <div key={ev.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-700/50 text-sm">
+                      <div>
+                        <p className="font-medium text-gray-200">{ev.title}</p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(ev.startTime).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                          {' - '}
+                          {new Date(ev.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        </p>
+                      </div>
+                      <button onClick={() => {
+                        setEditingEventId(ev.id);
+                        setEventForm({ title: ev.title, description: ev.description || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString() });
+                        setShowEventForm(true);
+                      }} className="text-xs text-blue-400 hover:text-blue-300">Edit</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

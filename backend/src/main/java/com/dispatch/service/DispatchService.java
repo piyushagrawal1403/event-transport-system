@@ -40,6 +40,13 @@ public class DispatchService {
             }
         }
 
+        int totalPassengers = rides.stream().mapToInt(RideRequest::getPassengerCount).sum();
+        if (totalPassengers > cab.getCapacity()) {
+            throw new IllegalStateException(
+                    "Total passengers (" + totalPassengers + ") exceeds cab capacity (" + cab.getCapacity() + "). " +
+                    "Assign fewer rides to this cab.");
+        }
+
         String otp = String.format("%04d", new Random().nextInt(10000));
         String magicLinkId = UUID.randomUUID().toString();
 

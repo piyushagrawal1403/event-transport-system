@@ -101,11 +101,6 @@ export default function Dashboard() {
 
   const handleAssign = async () => {
     if (selectedRides.size === 0 || !selectedCabId) return;
-    const totalPax = Array.from(selectedRides.values()).reduce((s, p) => s + p, 0);
-    const cab = cabs.find(c => c.id === selectedCabId);
-    if (cab && totalPax > cab.capacity) {
-      if (!confirm(`Selected ${totalPax} passengers exceeds cab capacity (${cab.capacity}). Assign anyway?`)) return;
-    }
 
     setAssigning(true);
     try {
@@ -129,7 +124,9 @@ export default function Dashboard() {
 
       setTimeout(() => setAssignResult(null), 10000);
     } catch (err) {
-      alert('Failed to assign rides. Check console for details.');
+      const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        || 'Failed to assign rides. Check console for details.';
+      alert(errorMsg);
       console.error(err);
     } finally {
       setAssigning(false);

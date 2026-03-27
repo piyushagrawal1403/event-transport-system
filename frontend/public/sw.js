@@ -11,7 +11,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   // Network-first strategy for API calls
   if (event.request.url.includes('/api/')) {
-    event.respondWith(fetch(event.request));
+    event.respondWith(
+      fetch(event.request).catch(() =>
+        new Response(JSON.stringify({ error: 'Network unavailable' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
     return;
   }
 
@@ -24,7 +31,7 @@ self.addEventListener('fetch', (event) => {
           cache.put(event.request, responseClone);
         });
         return response;
-      });
+      }).catch(() => new Response('Offline', { status: 503 }));
     })
   );
 });

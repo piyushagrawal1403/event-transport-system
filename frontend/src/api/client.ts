@@ -96,4 +96,17 @@ export const updateTripStatus = (magicLinkId: string, status: string) =>
     `/api/v1/dispatch/status/${magicLinkId}`, { status }
   );
 
+// === Event Itinerary Endpoints ===
+export interface EventItinerary {
+  id: string;
+  title: string;
+  description: string | null;
+  startTime: string;
+  endTime: string;
+  location: Location;
+}
+
+export const getEvents = () =>
+  api.get<EventItinerary[]>('/api/v1/events');
+
 export default api;

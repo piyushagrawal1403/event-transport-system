@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut } from 'lucide-react';
 import { createRide, getLocations, getGuestRides, type Location } from '../../api/client';
+import EventTimeline from '../../components/EventTimeline';
 
 const MAX_CAB_CAPACITY = 4;
 
@@ -95,6 +96,9 @@ export default function RequestRide() {
       </div>
 
       <div className="max-w-md mx-auto p-4 space-y-4">
+        {/* Event Schedule */}
+        <EventTimeline />
+
         {/* Direction Toggle */}
         <div className="bg-white rounded-xl shadow-sm p-1 flex gap-1">
           <button

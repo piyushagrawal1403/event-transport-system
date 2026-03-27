@@ -16,7 +16,11 @@ export default function MagicLink() {
       getTripRides(magicLinkId).then(res => {
         setRides(res.data);
         if (res.data.length > 0) {
-          setTripStatus(res.data[0].status);
+          const s = res.data[0].status;
+          setTripStatus(s);
+          if (s === 'COMPLETED') {
+            setStatus('success');
+          }
         }
       }).catch(() => {});
     }

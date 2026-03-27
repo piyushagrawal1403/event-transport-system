@@ -64,15 +64,6 @@ public class DispatchService {
         }
         rideRequestRepository.saveAll(rides);
 
-        // Log SMS payload for the driver
-        System.out.println("=== SMS TO DRIVER ===");
-        System.out.println("To: " + cab.getDriverPhone() + " (" + cab.getDriverName() + ")");
-        System.out.println("Cab: " + cab.getLicensePlate());
-        System.out.println("Passengers: " + rides.stream().mapToInt(RideRequest::getPassengerCount).sum());
-        System.out.println("Magic Link: /d/" + magicLinkId);
-        System.out.println("OTP: " + otp);
-        System.out.println("=====================");
-
         Map<String, String> result = new HashMap<>();
         result.put("magicLinkId", magicLinkId);
         result.put("otp", otp);

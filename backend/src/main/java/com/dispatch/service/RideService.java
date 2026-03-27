@@ -28,7 +28,7 @@ public class RideService {
 
         RideRequest ride = new RideRequest();
         ride.setGuestName(dto.getGuestName());
-        ride.setGuestPhone(dto.getGuestPhone());
+        ride.setGuestPhone(sanitizePhone(dto.getGuestPhone()));
         ride.setPassengerCount(dto.getPassengerCount());
         ride.setDirection(RideDirection.valueOf(dto.getDirection()));
         ride.setLocation(location);
@@ -42,7 +42,7 @@ public class RideService {
     }
 
     public List<RideRequest> getGuestActiveRides(String phone) {
-        return rideRequestRepository.findByGuestPhoneAndStatusIn(phone,
+        return rideRequestRepository.findByGuestPhoneAndStatusIn(sanitizePhone(phone),
                 Arrays.asList(RideStatus.PENDING, RideStatus.ASSIGNED, RideStatus.IN_TRANSIT, RideStatus.ARRIVED));
     }
 
@@ -62,5 +62,14 @@ public class RideService {
 
     public List<RideRequest> getCompletedRidesByCab(Long cabId) {
         return rideRequestRepository.findByCabIdAndStatus(cabId, RideStatus.COMPLETED);
+    }
+
+    private String sanitizePhone(String phone) {
+        if (phone == null) return null;
+        String digits = phone.replaceAll("[^\\d]", "");
+        if (digits.startsWith("91") && digits.length() == 12) {
+            digits = digits.substring(2);
+        }
+        return digits;
     }
 }

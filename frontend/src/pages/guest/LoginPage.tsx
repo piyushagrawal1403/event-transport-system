@@ -19,7 +19,7 @@ export default function LoginPage() {
     e.preventDefault();
     if (name.trim() && phone.trim()) {
       localStorage.setItem('guestName', name.trim());
-      localStorage.setItem('guestPhone', phone.trim());
+      localStorage.setItem('guestPhone', phone.trim().replace(/[^\d]/g, '').replace(/^91/, '').slice(-10));
       navigate('/request');
     }
   };
@@ -59,7 +59,7 @@ export default function LoginPage() {
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="+91 98765 43210"
+                placeholder="9876543210"
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                 required
               />

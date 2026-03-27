@@ -60,7 +60,7 @@ public class DataSeeder implements CommandLineRunner {
         for (int i = 1; i <= 40; i++) {
             String plate = String.format("KA-01-AB-%04d", 1000 + i);
             String driverName = driverFirstNames[i - 1] + " Kumar";
-            String driverPhone = String.format("+91-98765-%05d", 10000 + i);
+            String driverPhone = String.format("98765%05d", 10000 + i);
             cabRepository.save(new Cab(plate, driverName, driverPhone, 4));
         }
 

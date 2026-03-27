@@ -11,7 +11,10 @@ export default function DriverDashboard() {
   const [completedRides, setCompletedRides] = useState<RideRequest[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
-  const normalizePhone = (p: string) => p.replace(/[^\d+]/g, '');
+  const sanitizePhone = (p: string) => {
+    const digits = p.replace(/[^\d]/g, '');
+    return digits.startsWith('91') && digits.length === 12 ? digits.substring(2) : digits.slice(-10);
+  };
 
   useEffect(() => {
     const savedPhone = localStorage.getItem('driverPhone');
@@ -28,8 +31,8 @@ export default function DriverDashboard() {
       try {
         const res = await getCabs();
         setCabs(res.data);
-        const normalizedInput = normalizePhone(phone);
-        const found = res.data.find(c => normalizePhone(c.driverPhone) === normalizedInput);
+        const sanitizedInput = sanitizePhone(phone);
+        const found = res.data.find(c => sanitizePhone(c.driverPhone) === sanitizedInput);
         setMyCab(found || null);
 
         if (found) {
@@ -58,7 +61,9 @@ export default function DriverDashboard() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.trim()) {
-      localStorage.setItem('driverPhone', phone.trim());
+      const sanitized = sanitizePhone(phone.trim());
+      localStorage.setItem('driverPhone', sanitized);
+      setPhone(sanitized);
       setLoggedIn(true);
     }
   };

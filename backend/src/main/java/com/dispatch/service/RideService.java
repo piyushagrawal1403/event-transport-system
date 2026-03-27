@@ -59,4 +59,8 @@ public class RideService {
         return rideRequestRepository.findByStatusIn(
                 Arrays.asList(RideStatus.ASSIGNED, RideStatus.IN_TRANSIT, RideStatus.ARRIVED));
     }
+
+    public List<RideRequest> getCompletedRidesByCab(Long cabId) {
+        return rideRequestRepository.findByCabIdAndStatus(cabId, RideStatus.COMPLETED);
+    }
 }

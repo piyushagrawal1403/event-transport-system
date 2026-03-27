@@ -428,12 +428,10 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-medium">{cab.licensePlate}</span>
                       <span className="text-gray-400">{cab.driverName}</span>
-                      {cab.tripsCompleted > 0 && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-300 text-xs font-medium">
-                          <Award className="w-3 h-3" />
-                          {cab.tripsCompleted}
-                        </span>
-                      )}
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-300 text-xs font-medium">
+                        <Award className="w-3 h-3" />
+                        {cab.tripsCompleted}
+                      </span>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                       cab.status === 'AVAILABLE' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'

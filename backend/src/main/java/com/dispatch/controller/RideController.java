@@ -49,4 +49,9 @@ public class RideController {
     public ResponseEntity<List<RideRequest>> getOngoingRides() {
         return ResponseEntity.ok(rideService.getOngoingRides());
     }
+
+    @GetMapping("/cab/{cabId}/completed")
+    public ResponseEntity<List<RideRequest>> getCabCompletedRides(@PathVariable Long cabId) {
+        return ResponseEntity.ok(rideService.getCompletedRidesByCab(cabId));
+    }
 }

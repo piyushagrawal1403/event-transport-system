@@ -67,6 +67,9 @@ export const getCabs = () =>
 export const getCabActiveRides = (cabId: number) =>
   api.get<RideRequest[]>(`/api/v1/rides/cab/${cabId}`);
 
+export const getCabCompletedRides = (cabId: number) =>
+  api.get<RideRequest[]>(`/api/v1/rides/cab/${cabId}/completed`);
+
 export const getOngoingRides = () =>
   api.get<RideRequest[]>('/api/v1/rides/ongoing');
 

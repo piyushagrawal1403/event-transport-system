@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Car, Phone, LogIn, Navigation, MapPin } from 'lucide-react';
-import { getCabs, getCabActiveRides, type Cab, type RideRequest } from '../../api/client';
+import { Car, Phone, LogIn, Navigation, MapPin, ChevronDown, ChevronUp, Award, Clock } from 'lucide-react';
+import { getCabs, getCabActiveRides, getCabCompletedRides, type Cab, type RideRequest } from '../../api/client';
 
 export default function DriverDashboard() {
   const [phone, setPhone] = useState('');
@@ -8,6 +8,8 @@ export default function DriverDashboard() {
   const [, setCabs] = useState<Cab[]>([]);
   const [myCab, setMyCab] = useState<Cab | null>(null);
   const [activeTrips, setActiveTrips] = useState<RideRequest[]>([]);
+  const [completedRides, setCompletedRides] = useState<RideRequest[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const normalizePhone = (p: string) => p.replace(/[^\d+]/g, '');
 
@@ -30,11 +32,18 @@ export default function DriverDashboard() {
         const found = res.data.find(c => normalizePhone(c.driverPhone) === normalizedInput);
         setMyCab(found || null);
 
-        if (found && found.status === 'BUSY') {
-          const ridesRes = await getCabActiveRides(found.id);
-          setActiveTrips(ridesRes.data);
+        if (found) {
+          if (found.status === 'BUSY') {
+            const ridesRes = await getCabActiveRides(found.id);
+            setActiveTrips(ridesRes.data);
+          } else {
+            setActiveTrips([]);
+          }
+          const completedRes = await getCabCompletedRides(found.id);
+          setCompletedRides(completedRes.data);
         } else {
           setActiveTrips([]);
+          setCompletedRides([]);
         }
       } catch {
         // Retry
@@ -179,6 +188,65 @@ export default function DriverDashboard() {
                 ))}
               </div>
             )}
+
+            {/* Completed Rides History */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition rounded-xl"
+              >
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <Award className="w-4 h-4 text-purple-600" />
+                  Completed Rides ({completedRides.length})
+                </h3>
+                {showHistory ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+              </button>
+
+              {showHistory && (
+                <div className="px-4 pb-4">
+                  {completedRides.length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center py-3">No completed rides yet</p>
+                  ) : (
+                    (() => {
+                      const byDate = new Map<string, RideRequest[]>();
+                      for (const ride of completedRides) {
+                        const date = new Date(ride.requestedAt).toLocaleDateString('en-IN', {
+                          day: 'numeric', month: 'short', year: 'numeric'
+                        });
+                        if (!byDate.has(date)) byDate.set(date, []);
+                        byDate.get(date)!.push(ride);
+                      }
+                      return Array.from(byDate.entries()).map(([date, rides]) => (
+                        <div key={date} className="mb-3 last:mb-0">
+                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1.5">{date}</p>
+                          <div className="space-y-2">
+                            {rides.map(ride => (
+                              <div key={ride.id} className="bg-gray-50 rounded-lg p-3 text-sm">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <MapPin className="w-3 h-3 text-gray-400" />
+                                    <span className="font-medium text-gray-700">{ride.location.name}</span>
+                                  </div>
+                                  <span className="text-xs text-green-600 font-medium">COMPLETED</span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 text-gray-500 text-xs">
+                                  <span>{ride.passengerCount} pax</span>
+                                  <span>{ride.direction === 'TO_VENUE' ? '→ Venue' : '→ Hotel'}</span>
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {new Date(ride.requestedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ));
+                    })()
+                  )}
+                </div>
+              )}
+            </div>
 
             <p className="text-xs text-gray-400 text-center">
               You will receive trip assignments via SMS/WhatsApp with a link to complete rides.

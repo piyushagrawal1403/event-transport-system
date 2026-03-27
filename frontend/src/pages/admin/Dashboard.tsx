@@ -34,14 +34,15 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [ridesRes, cabsRes, ongoingRes] = await Promise.all([getPendingRides(), getCabs(), getOngoingRides()]);
-      setCabs(cabsRes.data);
-      setOngoingRides(ongoingRes.data);
+      const [ridesRes, cabsRes, ongoingRes] = await Promise.allSettled([getPendingRides(), getCabs(), getOngoingRides()]);
+      if (cabsRes.status === 'fulfilled') setCabs(cabsRes.value.data);
+      if (ongoingRes.status === 'fulfilled') setOngoingRides(ongoingRes.value.data);
+      const ridesData = ridesRes.status === 'fulfilled' ? ridesRes.value.data : [];
 
       const now = new Date();
       const groupMap = new Map<number, LocationGroup>();
 
-      for (const ride of ridesRes.data) {
+      for (const ride of ridesData) {
         const locId = ride.location.id;
         if (!groupMap.has(locId)) {
           groupMap.set(locId, {
@@ -124,6 +125,7 @@ export default function Dashboard() {
       setSelectedRides(new Map());
       setSelectedCabId(null);
       await fetchData();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
 
       setTimeout(() => setAssignResult(null), 10000);
     } catch (err) {

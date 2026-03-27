@@ -11,7 +11,7 @@ export default function LoginPage() {
     const savedName = localStorage.getItem('guestName');
     const savedPhone = localStorage.getItem('guestPhone');
     if (savedName && savedPhone) {
-      navigate('/request');
+      navigate('/home');
     }
   }, [navigate]);
 
@@ -20,7 +20,7 @@ export default function LoginPage() {
     if (name.trim() && phone.trim()) {
       localStorage.setItem('guestName', name.trim());
       localStorage.setItem('guestPhone', phone.trim().replace(/[^\d]/g, '').replace(/^91/, '').slice(-10));
-      navigate('/request');
+      navigate('/home');
     }
   };
 

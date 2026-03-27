@@ -43,6 +43,8 @@ public class RideRequest {
     @Column(nullable = false)
     private Instant requestedAt;
 
+    private Instant assignedAt;
+
     public RideRequest() {}
 
     @PrePersist
@@ -87,4 +89,7 @@ public class RideRequest {
 
     public Instant getRequestedAt() { return requestedAt; }
     public void setRequestedAt(Instant requestedAt) { this.requestedAt = requestedAt; }
+
+    public Instant getAssignedAt() { return assignedAt; }
+    public void setAssignedAt(Instant assignedAt) { this.assignedAt = assignedAt; }
 }

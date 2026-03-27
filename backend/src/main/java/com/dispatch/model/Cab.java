@@ -26,6 +26,9 @@ public class Cab {
     @Column(nullable = false)
     private CabStatus status = CabStatus.AVAILABLE;
 
+    @Column(nullable = false)
+    private Integer tripsCompleted = 0;
+
     public Cab() {}
 
     public Cab(String licensePlate, String driverName, String driverPhone, Integer capacity) {
@@ -53,4 +56,7 @@ public class Cab {
 
     public CabStatus getStatus() { return status; }
     public void setStatus(CabStatus status) { this.status = status; }
+
+    public Integer getTripsCompleted() { return tripsCompleted; }
+    public void setTripsCompleted(Integer tripsCompleted) { this.tripsCompleted = tripsCompleted; }
 }

@@ -7,6 +7,7 @@ import com.dispatch.repository.RideRequestRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.*;
 
 @Service
@@ -53,11 +54,13 @@ public class DispatchService {
         cab.setStatus(CabStatus.BUSY);
         cabRepository.save(cab);
 
+        Instant now = Instant.now();
         for (RideRequest ride : rides) {
             ride.setStatus(RideStatus.ASSIGNED);
             ride.setCab(cab);
             ride.setDropoffOtp(otp);
             ride.setMagicLinkId(magicLinkId);
+            ride.setAssignedAt(now);
         }
         rideRequestRepository.saveAll(rides);
 
@@ -98,6 +101,7 @@ public class DispatchService {
         Cab cab = firstRide.getCab();
         if (cab != null) {
             cab.setStatus(CabStatus.AVAILABLE);
+            cab.setTripsCompleted(cab.getTripsCompleted() + 1);
             cabRepository.save(cab);
         }
 

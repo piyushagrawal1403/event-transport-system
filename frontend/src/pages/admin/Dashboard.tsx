@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Car, Users, Clock, MapPin, CheckCircle2, AlertTriangle,
-  RefreshCw, Send, ChevronDown, ChevronUp
+  RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award
 } from 'lucide-react';
 import {
-  getPendingRides, getCabs, assignRides,
+  getPendingRides, getCabs, assignRides, getOngoingRides,
   type RideRequest, type Cab
 } from '../../api/client';
 
@@ -27,13 +27,16 @@ export default function Dashboard() {
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [showFleet, setShowFleet] = useState(true);
   const [assignResult, setAssignResult] = useState<{ magicLinkId: string; otp: string } | null>(null);
+  const [ongoingRides, setOngoingRides] = useState<RideRequest[]>([]);
+  const [showOngoing, setShowOngoing] = useState(true);
 
   const DEFAULT_CAB_CAPACITY = 4;
 
   const fetchData = useCallback(async () => {
     try {
-      const [ridesRes, cabsRes] = await Promise.all([getPendingRides(), getCabs()]);
+      const [ridesRes, cabsRes, ongoingRes] = await Promise.all([getPendingRides(), getCabs(), getOngoingRides()]);
       setCabs(cabsRes.data);
+      setOngoingRides(ongoingRes.data);
 
       const now = new Date();
       const groupMap = new Map<number, LocationGroup>();
@@ -362,9 +365,15 @@ export default function Dashboard() {
                       cab.status === 'AVAILABLE' ? 'bg-green-900/20 text-green-300' : 'bg-red-900/20 text-red-300'
                     }`}
                   >
-                    <div>
+                    <div className="flex items-center gap-2">
                       <span className="font-mono font-medium">{cab.licensePlate}</span>
-                      <span className="text-gray-400 ml-2">{cab.driverName}</span>
+                      <span className="text-gray-400">{cab.driverName}</span>
+                      {cab.tripsCompleted > 0 && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-300 text-xs font-medium">
+                          <Award className="w-3 h-3" />
+                          {cab.tripsCompleted}
+                        </span>
+                      )}
                     </div>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                       cab.status === 'AVAILABLE' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'
@@ -377,7 +386,116 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* In Transit Panel */}
+        <div className="lg:col-span-3">
+          <div className="bg-gray-800 rounded-xl border border-gray-700">
+            <button
+              onClick={() => setShowOngoing(!showOngoing)}
+              className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-750 transition rounded-t-xl"
+            >
+              <h3 className="font-semibold flex items-center gap-2">
+                <Navigation className="w-4 h-4 text-yellow-400" />
+                In Transit ({ongoingRides.length} active trips)
+              </h3>
+              {showOngoing ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+
+            {showOngoing && (
+              <div className="px-4 pb-4">
+                {ongoingRides.length === 0 ? (
+                  <p className="text-gray-500 text-sm py-4 text-center">No active trips</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-gray-400 text-left border-b border-gray-700">
+                          <th className="pb-2 pr-4">Cab</th>
+                          <th className="pb-2 pr-4">Driver</th>
+                          <th className="pb-2 pr-4">Destination</th>
+                          <th className="pb-2 pr-4">Pax</th>
+                          <th className="pb-2 pr-4">Status</th>
+                          <th className="pb-2 pr-4">Time in Transit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-700">
+                        {(() => {
+                          const tripMap = new Map<string, RideRequest[]>();
+                          for (const ride of ongoingRides) {
+                            const key = ride.magicLinkId || String(ride.id);
+                            if (!tripMap.has(key)) tripMap.set(key, []);
+                            tripMap.get(key)!.push(ride);
+                          }
+                          return Array.from(tripMap.entries()).map(([magicLink, rides]) => {
+                            const first = rides[0];
+                            const totalPax = rides.reduce((s, r) => s + r.passengerCount, 0);
+                            const assignedAt = first.assignedAt;
+                            const destination = first.direction === 'TO_VENUE' ? 'Main Venue' : first.location.name;
+                            return (
+                              <tr key={magicLink} className="text-gray-200">
+                                <td className="py-2 pr-4 font-mono">{first.cab?.licensePlate || '—'}</td>
+                                <td className="py-2 pr-4">{first.cab?.driverName || '—'}</td>
+                                <td className="py-2 pr-4">{destination}</td>
+                                <td className="py-2 pr-4">{totalPax}</td>
+                                <td className="py-2 pr-4">
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                    first.status === 'IN_TRANSIT' ? 'bg-yellow-900 text-yellow-200'
+                                    : first.status === 'ARRIVED' ? 'bg-blue-900 text-blue-200'
+                                    : 'bg-gray-700 text-gray-300'
+                                  }`}>
+                                    {first.status.replace('_', ' ')}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-4">
+                                  {assignedAt ? (
+                                    <TransitTimer assignedAt={assignedAt} />
+                                  ) : (
+                                    <span className="text-gray-500">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function TransitTimer({ assignedAt }: { assignedAt: string }) {
+  const [elapsed, setElapsed] = useState('');
+
+  useEffect(() => {
+    const update = () => {
+      const totalSecs = Math.floor((Date.now() - new Date(assignedAt).getTime()) / 1000);
+      if (totalSecs < 60) {
+        setElapsed(`${totalSecs}s`);
+      } else {
+        const mins = Math.floor(totalSecs / 60);
+        const secs = totalSecs % 60;
+        setElapsed(`${mins}m ${secs}s`);
+      }
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [assignedAt]);
+
+  const totalMins = Math.floor((Date.now() - new Date(assignedAt).getTime()) / 60000);
+  const color = totalMins >= 30 ? 'text-red-400' : totalMins >= 15 ? 'text-orange-400' : 'text-yellow-300';
+
+  return (
+    <span className={`font-mono font-medium ${color}`}>
+      <Clock className="w-3 h-3 inline mr-1" />
+      {elapsed}
+    </span>
   );
 }

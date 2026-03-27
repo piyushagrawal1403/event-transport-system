@@ -15,4 +15,5 @@ public interface RideRequestRepository extends JpaRepository<RideRequest, Long> 
     List<RideRequest> findByMagicLinkId(String magicLinkId);
     Optional<RideRequest> findFirstByMagicLinkId(String magicLinkId);
     List<RideRequest> findByCabIdAndStatusIn(Long cabId, List<RideStatus> statuses);
+    List<RideRequest> findByStatusIn(List<RideStatus> statuses);
 }

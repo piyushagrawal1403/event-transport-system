@@ -30,6 +30,7 @@ export interface RideRequest {
   dropoffOtp: string | null;
   magicLinkId: string | null;
   requestedAt: string;
+  assignedAt: string | null;
 }
 
 export interface Cab {
@@ -39,6 +40,7 @@ export interface Cab {
   driverPhone: string;
   capacity: number;
   status: 'AVAILABLE' | 'BUSY';
+  tripsCompleted: number;
 }
 
 export interface Location {
@@ -64,6 +66,9 @@ export const getCabs = () =>
 
 export const getCabActiveRides = (cabId: number) =>
   api.get<RideRequest[]>(`/api/v1/rides/cab/${cabId}`);
+
+export const getOngoingRides = () =>
+  api.get<RideRequest[]>('/api/v1/rides/ongoing');
 
 export const getLocations = () =>
   api.get<Location[]>('/api/v1/locations');

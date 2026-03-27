@@ -87,6 +87,10 @@ public class DispatchService {
         }
 
         RideRequest firstRide = rides.get(0);
+        if (firstRide.getStatus() == RideStatus.COMPLETED) {
+            throw new IllegalStateException("Trip is already completed");
+        }
+
         if (!otp.equals(firstRide.getDropoffOtp())) {
             return false;
         }
@@ -107,6 +111,10 @@ public class DispatchService {
 
     @Transactional
     public void updateTripStatus(String magicLinkId, RideStatus newStatus) {
+        if (newStatus == RideStatus.COMPLETED || newStatus == RideStatus.PENDING) {
+            throw new IllegalArgumentException("Cannot set status to " + newStatus + " via this endpoint");
+        }
+
         List<RideRequest> rides = rideRequestRepository.findByMagicLinkId(magicLinkId);
         if (rides.isEmpty()) {
             throw new IllegalArgumentException("No rides found for magic link: " + magicLinkId);

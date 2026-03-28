@@ -39,7 +39,7 @@ export interface Cab {
   driverName: string;
   driverPhone: string;
   capacity: number;
-  status: 'AVAILABLE' | 'BUSY';
+  status: 'AVAILABLE' | 'BUSY' | 'OFFLINE';
   tripsCompleted: number;
 }
 
@@ -108,5 +108,8 @@ export interface EventItinerary {
 
 export const getEvents = () =>
   api.get<EventItinerary[]>('/api/v1/events');
+
+export const updateCabStatus = (phone: string, status: 'AVAILABLE' | 'OFFLINE') =>
+  api.put<{ status: string; message: string }>('/api/v1/cabs/status', { phone, status });
 
 export default api;

@@ -438,7 +438,7 @@ export default function Dashboard() {
                   <div
                     key={cab.id}
                     className={`flex items-center justify-between p-2 rounded-lg text-sm ${
-                      cab.status === 'AVAILABLE' ? 'bg-green-900/20 text-green-300' : 'bg-red-900/20 text-red-300'
+                      cab.status === 'AVAILABLE' ? 'bg-green-900/20 text-green-300' : cab.status === 'OFFLINE' ? 'bg-gray-900/30 text-gray-500 opacity-50' : 'bg-red-900/20 text-red-300'
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -450,7 +450,7 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      cab.status === 'AVAILABLE' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'
+                      cab.status === 'AVAILABLE' ? 'bg-green-800 text-green-200' : cab.status === 'OFFLINE' ? 'bg-gray-700 text-gray-400' : 'bg-red-800 text-red-200'
                     }`}>
                       {cab.status}
                     </span>
@@ -496,7 +496,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <select value={eventForm.locationId} onChange={e => setEventForm(f => ({...f, locationId: e.target.value}))} className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white outline-none">
-                      {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                      {locations.filter(l => l.isMainVenue).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                     <div className="flex gap-2">
                       <button onClick={async () => {

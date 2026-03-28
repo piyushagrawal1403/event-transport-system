@@ -76,6 +76,12 @@ export default function MagicLink() {
           <CheckCircle2 className="w-24 h-24 text-green-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-green-800">Trip Completed!</h1>
           <p className="text-green-600 mt-2">Thank you. You are now available for new rides.</p>
+          <a
+            href="/driver"
+            className="inline-block mt-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition shadow-lg"
+          >
+            Back to Dashboard
+          </a>
         </div>
       </div>
     );

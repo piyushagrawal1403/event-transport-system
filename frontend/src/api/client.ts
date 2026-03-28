@@ -49,6 +49,13 @@ export interface Location {
   isMainVenue: boolean;
 }
 
+export interface AppNotification {
+  id: number;
+  message: string;
+  createdAt: string;
+  dismissed: boolean;
+}
+
 export const createRide = (payload: RideRequestPayload) =>
   api.post<RideRequest>('/api/v1/rides', payload);
 
@@ -114,5 +121,10 @@ export const updateCabStatus = (phone: string, status: 'AVAILABLE' | 'OFFLINE') 
 
 export const cancelRide = (rideId: number) =>
   api.delete<RideRequest>(`/api/v1/rides/${rideId}`);
+
+export const getNotifications = (since?: string) =>
+    api.get<AppNotification[]>('/api/v1/notifications', {
+      params: since ? { since } : {}
+    });
 
 export default api;

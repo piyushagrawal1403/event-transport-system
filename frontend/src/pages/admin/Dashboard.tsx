@@ -516,7 +516,7 @@ export default function Dashboard() {
                     </select>
                     <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                       <input type="checkbox" checked={eventForm.notifyGuests} onChange={e => setEventForm(f => ({...f, notifyGuests: e.target.checked}))} className="rounded bg-gray-600 border-gray-500" />
-                      Notify all guests (SMS)
+                      Notify all guests (in-app)
                     </label>
                     <div className="flex gap-2">
                       <button onClick={async () => {

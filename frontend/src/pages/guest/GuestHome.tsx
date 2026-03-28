@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, CheckCircle2, ChevronUp } from 'lucide-react';
 import { createRide, getLocations, getGuestRides, cancelRide, type Location, type RideRequest } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
+import NotificationBanner from '../../components/NotificationBanner';
 
 const MAX_CAB_CAPACITY = 4;
 
@@ -105,6 +106,7 @@ export default function GuestHome() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <NotificationBanner />
       {/* Header */}
       <div className="bg-blue-600 text-white px-4 py-4">
         <div className="max-w-md mx-auto flex items-center justify-between">

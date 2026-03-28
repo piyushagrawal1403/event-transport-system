@@ -34,4 +34,9 @@ public class EventItineraryDto {
 
     public Long getLocationId() { return locationId; }
     public void setLocationId(Long locationId) { this.locationId = locationId; }
+
+    private Boolean notifyGuests;
+
+    public Boolean getNotifyGuests() { return notifyGuests; }
+    public void setNotifyGuests(Boolean notifyGuests) { this.notifyGuests = notifyGuests; }
 }

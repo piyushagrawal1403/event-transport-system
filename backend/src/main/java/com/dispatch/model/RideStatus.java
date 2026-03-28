@@ -5,5 +5,6 @@ public enum RideStatus {
     ASSIGNED,
     IN_TRANSIT,
     ARRIVED,
-    COMPLETED
+    COMPLETED,
+    CANCELLED
 }

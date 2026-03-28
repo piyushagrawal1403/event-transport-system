@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Car, Phone, LogIn, Navigation, MapPin, ChevronDown, ChevronUp, Award, Clock } from 'lucide-react';
-import { getCabs, getCabActiveRides, getCabCompletedRides, type Cab, type RideRequest } from '../../api/client';
+import { getCabs, getCabActiveRides, getCabCompletedRides, updateCabStatus, type Cab, type RideRequest } from '../../api/client';
 
 export default function DriverDashboard() {
   const [phone, setPhone] = useState('');
@@ -10,6 +10,7 @@ export default function DriverDashboard() {
   const [activeTrips, setActiveTrips] = useState<RideRequest[]>([]);
   const [completedRides, setCompletedRides] = useState<RideRequest[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [togglingStatus, setTogglingStatus] = useState(false);
 
   const sanitizePhone = (p: string) => {
     const digits = p.replace(/[^\d]/g, '');
@@ -127,22 +128,53 @@ export default function DriverDashboard() {
       <div className="max-w-md mx-auto p-4">
         {myCab ? (
           <div className="space-y-4">
-            {/* Current Status */}
+            {/* On Duty / Off Duty Toggle */}
             <div className={`rounded-xl p-4 ${
-              myCab.status === 'AVAILABLE'
+              myCab.status === 'OFFLINE'
+                ? 'bg-gray-100 border border-gray-300'
+                : myCab.status === 'AVAILABLE'
                 ? 'bg-green-50 border border-green-200'
                 : 'bg-amber-50 border border-amber-200'
             }`}>
-              <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${
-                  myCab.status === 'AVAILABLE' ? 'bg-green-500' : 'bg-amber-500'
-                } animate-pulse`} />
-                <span className={`font-semibold ${
-                  myCab.status === 'AVAILABLE' ? 'text-green-800' : 'text-amber-800'
-                }`}>
-                  {myCab.status === 'AVAILABLE' ? 'Available for rides' : 'Currently on a trip'}
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${
+                    myCab.status === 'OFFLINE' ? 'bg-gray-400' : myCab.status === 'AVAILABLE' ? 'bg-green-500' : 'bg-amber-500'
+                  } animate-pulse`} />
+                  <span className={`font-semibold ${
+                    myCab.status === 'OFFLINE' ? 'text-gray-600' : myCab.status === 'AVAILABLE' ? 'text-green-800' : 'text-amber-800'
+                  }`}>
+                    {myCab.status === 'OFFLINE' ? 'Off Duty' : myCab.status === 'AVAILABLE' ? 'On Duty' : 'On Trip'}
+                  </span>
+                </div>
+                <button
+                  disabled={myCab.status === 'BUSY' || togglingStatus}
+                  onClick={async () => {
+                    setTogglingStatus(true);
+                    try {
+                      const newStatus = myCab.status === 'OFFLINE' ? 'AVAILABLE' : 'OFFLINE';
+                      await updateCabStatus(phone, newStatus);
+                      setMyCab({ ...myCab, status: newStatus });
+                    } catch (err) {
+                      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update status';
+                      alert(msg);
+                    } finally {
+                      setTogglingStatus(false);
+                    }
+                  }}
+                  className={`relative inline-flex items-center w-12 h-6 rounded-full transition ${
+                    myCab.status === 'BUSY' ? 'bg-gray-300 cursor-not-allowed' :
+                    myCab.status === 'OFFLINE' ? 'bg-gray-300' : 'bg-green-500'
+                  }`}
+                >
+                  <span className={`inline-block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                    myCab.status !== 'OFFLINE' ? 'translate-x-6' : 'translate-x-0.5'
+                  }`} />
+                </button>
               </div>
+              {myCab.status === 'BUSY' && (
+                <p className="text-xs text-amber-600 mt-2">Cannot go offline during an active trip.</p>
+              )}
             </div>
 
             {/* Cab Info */}

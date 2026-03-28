@@ -24,7 +24,7 @@ export interface RideRequest {
   guestPhone: string;
   passengerCount: number;
   direction: 'TO_VENUE' | 'TO_HOTEL';
-  status: 'PENDING' | 'ASSIGNED' | 'IN_TRANSIT' | 'ARRIVED' | 'COMPLETED';
+  status: 'PENDING' | 'ASSIGNED' | 'IN_TRANSIT' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED';
   location: Location;
   cab: Cab | null;
   dropoffOtp: string | null;
@@ -39,7 +39,7 @@ export interface Cab {
   driverName: string;
   driverPhone: string;
   capacity: number;
-  status: 'AVAILABLE' | 'BUSY';
+  status: 'AVAILABLE' | 'BUSY' | 'OFFLINE';
   tripsCompleted: number;
 }
 
@@ -47,6 +47,13 @@ export interface Location {
   id: number;
   name: string;
   isMainVenue: boolean;
+}
+
+export interface AppNotification {
+  id: number;
+  message: string;
+  createdAt: string;
+  dismissed: boolean;
 }
 
 export const createRide = (payload: RideRequestPayload) =>
@@ -108,5 +115,16 @@ export interface EventItinerary {
 
 export const getEvents = () =>
   api.get<EventItinerary[]>('/api/v1/events');
+
+export const updateCabStatus = (phone: string, status: 'AVAILABLE' | 'OFFLINE') =>
+  api.put<{ status: string; message: string }>('/api/v1/cabs/status', { phone, status });
+
+export const cancelRide = (rideId: number) =>
+  api.delete<RideRequest>(`/api/v1/rides/${rideId}`);
+
+export const getNotifications = (since?: string) =>
+    api.get<AppNotification[]>('/api/v1/notifications', {
+      params: since ? { since } : {}
+    });
 
 export default api;

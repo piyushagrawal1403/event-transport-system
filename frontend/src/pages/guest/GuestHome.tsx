@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
-import { createRide, getLocations, getGuestRides, type Location, type RideRequest } from '../../api/client';
+import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, CheckCircle2, ChevronUp } from 'lucide-react';
+import { createRide, getLocations, getGuestRides, cancelRide, type Location, type RideRequest } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
+import NotificationBanner from '../../components/NotificationBanner';
 
 const MAX_CAB_CAPACITY = 4;
 
@@ -12,6 +13,7 @@ const STATUS_LABELS: Record<string, string> = {
   IN_TRANSIT: 'On the way',
   ARRIVED: 'Cab has arrived!',
   COMPLETED: 'Trip completed',
+  CANCELLED: 'Ride cancelled',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -20,6 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
   IN_TRANSIT: 'bg-indigo-100 text-indigo-800',
   ARRIVED: 'bg-green-100 text-green-800',
   COMPLETED: 'bg-gray-100 text-gray-800',
+  CANCELLED: 'bg-red-100 text-red-800',
 };
 
 export default function GuestHome() {
@@ -38,7 +41,7 @@ export default function GuestHome() {
 
   // Active rides state
   const [activeRides, setActiveRides] = useState<RideRequest[]>([]);
-  const [loadingRides, setLoadingRides] = useState(true);
+  const [, setLoadingRides] = useState(true);
 
   useEffect(() => {
     if (!guestName || !guestPhone) {
@@ -103,6 +106,7 @@ export default function GuestHome() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <NotificationBanner />
       {/* Header */}
       <div className="bg-blue-600 text-white px-4 py-4">
         <div className="max-w-md mx-auto flex items-center justify-between">
@@ -168,6 +172,24 @@ export default function GuestHome() {
                     </div>
                   )}
                 </div>
+                {(ride.status === 'PENDING' || ride.status === 'ASSIGNED') && (
+                  <div className="px-4 pb-3">
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Cancel this ride?')) return;
+                        try {
+                          await cancelRide(ride.id);
+                          fetchRides();
+                        } catch {
+                          alert('Failed to cancel ride');
+                        }
+                      }}
+                      className="w-full py-2 bg-red-50 text-red-600 text-sm font-medium rounded-lg hover:bg-red-100 transition"
+                    >
+                      Cancel Ride
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
             <p className="text-xs text-gray-400 text-center">Auto-refreshing every 10 seconds</p>

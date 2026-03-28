@@ -2,7 +2,8 @@ package com.dispatch.model;
 
 public enum RideStatus {
     PENDING,
-    ASSIGNED,
+    OFFERED,    // Admin has dispatched — awaiting driver acceptance
+    ACCEPTED,   // Driver has accepted the trip
     IN_TRANSIT,
     ARRIVED,
     COMPLETED,

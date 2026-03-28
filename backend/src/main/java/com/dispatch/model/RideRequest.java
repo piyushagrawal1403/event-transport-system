@@ -32,10 +32,15 @@ public class RideRequest {
     @JoinColumn(name = "location_id", nullable = false)
     private Location location;
 
+    // Populated when location is "Others"; free-text destination typed by guest
+    @Column
+    private String customDestination;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "cab_id")
     private Cab cab;
 
+    // OTP is now verified at trip START, not drop-off
     private String dropoffOtp;
 
     private String magicLinkId;
@@ -44,6 +49,9 @@ public class RideRequest {
     private Instant requestedAt;
 
     private Instant assignedAt;
+
+    // Set when the driver explicitly accepts the offered trip
+    private Instant acceptedAt;
 
     public RideRequest() {}
 
@@ -56,6 +64,8 @@ public class RideRequest {
             this.status = RideStatus.PENDING;
         }
     }
+
+    // ── Getters & Setters ──────────────────────────────────────────────────────
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -78,6 +88,9 @@ public class RideRequest {
     public Location getLocation() { return location; }
     public void setLocation(Location location) { this.location = location; }
 
+    public String getCustomDestination() { return customDestination; }
+    public void setCustomDestination(String customDestination) { this.customDestination = customDestination; }
+
     public Cab getCab() { return cab; }
     public void setCab(Cab cab) { this.cab = cab; }
 
@@ -92,4 +105,7 @@ public class RideRequest {
 
     public Instant getAssignedAt() { return assignedAt; }
     public void setAssignedAt(Instant assignedAt) { this.assignedAt = assignedAt; }
+
+    public Instant getAcceptedAt() { return acceptedAt; }
+    public void setAcceptedAt(Instant acceptedAt) { this.acceptedAt = acceptedAt; }
 }

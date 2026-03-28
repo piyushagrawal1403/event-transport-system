@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, CheckCircle2, ChevronUp } from 'lucide-react';
+import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, CheckCircle2, ChevronUp, Navigation, Flag } from 'lucide-react';
 import { createRide, getLocations, getGuestRides, cancelRide, type Location, type RideRequest } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
@@ -9,18 +9,20 @@ const MAX_CAB_CAPACITY = 4;
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Waiting for cab...',
-  ASSIGNED: 'Cab assigned!',
-  IN_TRANSIT: 'On the way',
-  ARRIVED: 'Cab has arrived!',
+  OFFERED: 'Cab assigned, awaiting driver acceptance...',
+  ACCEPTED: 'Cab on the way',
+  ARRIVED: 'Cab has arrived! Share your OTP',
+  IN_TRANSIT: 'On the way to destination',
   COMPLETED: 'Trip completed',
   CANCELLED: 'Ride cancelled',
 };
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-100 text-yellow-800',
-  ASSIGNED: 'bg-blue-100 text-blue-800',
-  IN_TRANSIT: 'bg-indigo-100 text-indigo-800',
+  OFFERED: 'bg-orange-100 text-orange-800',
+  ACCEPTED: 'bg-blue-100 text-blue-800',
   ARRIVED: 'bg-green-100 text-green-800',
+  IN_TRANSIT: 'bg-indigo-100 text-indigo-800',
   COMPLETED: 'bg-gray-100 text-gray-800',
   CANCELLED: 'bg-red-100 text-red-800',
 };
@@ -35,6 +37,7 @@ export default function GuestHome() {
   const [direction, setDirection] = useState<'TO_VENUE' | 'TO_HOTEL'>('TO_VENUE');
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
+  const [customDestination, setCustomDestination] = useState('');
   const [passengerCount, setPassengerCount] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -85,11 +88,17 @@ export default function GuestHome() {
       let remaining = passengerCount;
       while (remaining > 0) {
         const count = Math.min(remaining, MAX_CAB_CAPACITY);
-        await createRide({ guestName, guestPhone, passengerCount: count, direction, locationId: selectedLocationId });
+        const selectedLocation = hotels.find(h => h.id === selectedLocationId);
+        const payload: any = { guestName, guestPhone, passengerCount: count, direction, locationId: selectedLocationId };
+        if (selectedLocation?.name === 'Others') {
+          payload.customDestination = customDestination.trim();
+        }
+        await createRide(payload);
         remaining -= count;
       }
       setShowBooking(false);
       setPassengerCount(1);
+      setCustomDestination('');
       fetchRides();
     } catch {
       setError('Failed to submit ride request. Please try again.');
@@ -135,7 +144,8 @@ export default function GuestHome() {
               <div key={ride.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
                 <div className={`px-4 py-2 flex items-center gap-2 ${STATUS_COLORS[ride.status]}`}>
                   {(ride.status === 'PENDING') && <Clock className="w-4 h-4" />}
-                  {(ride.status === 'ASSIGNED' || ride.status === 'IN_TRANSIT') && <Car className="w-4 h-4" />}
+                  {(ride.status === 'OFFERED' || ride.status === 'ACCEPTED') && <Navigation className="w-4 h-4" />}
+                  {(ride.status === 'IN_TRANSIT') && <Car className="w-4 h-4" />}
                   {(ride.status === 'ARRIVED' || ride.status === 'COMPLETED') && <CheckCircle2 className="w-4 h-4" />}
                   <span className="font-medium text-sm">{STATUS_LABELS[ride.status]}</span>
                 </div>
@@ -149,7 +159,7 @@ export default function GuestHome() {
                   <div className="text-sm text-gray-600">
                     {ride.passengerCount} passenger{ride.passengerCount > 1 ? 's' : ''}
                   </div>
-                  {ride.cab && (ride.status === 'ASSIGNED' || ride.status === 'IN_TRANSIT' || ride.status === 'ARRIVED') && (
+                  {ride.cab && (ride.status === 'ACCEPTED' || ride.status === 'ARRIVED' || ride.status === 'IN_TRANSIT') && (
                     <div className="bg-blue-50 rounded-xl p-4 space-y-3">
                       <div className="flex items-center gap-3">
                         <Car className="w-5 h-5 text-blue-600" />
@@ -159,20 +169,20 @@ export default function GuestHome() {
                         <Phone className="w-5 h-5" />
                         <span className="font-medium">{ride.cab.driverPhone}</span>
                       </a>
-                      {ride.dropoffOtp && (
+                      {ride.dropoffOtp && (ride.status === 'ACCEPTED' || ride.status === 'ARRIVED') && (
                         <div className="bg-white rounded-xl p-4 text-center border-2 border-blue-200">
                           <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-1">
                             <KeyRound className="w-4 h-4" />
                             <span>Your OTP</span>
                           </div>
                           <div className="text-4xl font-mono font-bold tracking-widest text-blue-600">{ride.dropoffOtp}</div>
-                          <p className="text-xs text-gray-400 mt-1">Share this with your driver at dropoff</p>
+                          <p className="text-xs text-gray-400 mt-1">Share this with your driver to start the trip</p>
                         </div>
                       )}
                     </div>
                   )}
                 </div>
-                {(ride.status === 'PENDING' || ride.status === 'ASSIGNED') && (
+                {(ride.status === 'PENDING' || ride.status === 'ACCEPTED') && (
                   <div className="px-4 pb-3">
                     <button
                       onClick={async () => {
@@ -249,6 +259,25 @@ export default function GuestHome() {
                   <option key={loc.id} value={loc.id}>{loc.name}</option>
                 ))}
               </select>
+              {(() => {
+                const selectedLocation = hotels.find(h => h.id === selectedLocationId);
+                return selectedLocation?.name === 'Others' && (
+                  <div className="mt-3">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                      <Flag className="w-4 h-4 text-amber-600" />
+                      Custom Destination
+                    </label>
+                    <input
+                      type="text"
+                      value={customDestination}
+                      onChange={(e) => setCustomDestination(e.target.value)}
+                      placeholder="Where exactly do you want to go?"
+                      className="w-full py-3 px-4 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      required
+                    />
+                  </div>
+                );
+              })()}
               <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
                 <ArrowRight className="w-4 h-4" />
                 <span>{direction === 'TO_VENUE' ? venue?.name || 'Main Venue' : 'Selected Hotel'}</span>
@@ -281,7 +310,7 @@ export default function GuestHome() {
 
             <button
               onClick={handleSubmit}
-              disabled={submitting || !selectedLocationId}
+              disabled={submitting || !selectedLocationId || (hotels.find(h => h.id === selectedLocationId)?.name === 'Others' && !customDestination.trim())}
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 text-lg"
             >
               {submitting ? 'Submitting...' : 'Request Ride'}

@@ -22,6 +22,10 @@ public class RideRequestDto {
     @NotNull(message = "Location ID is required")
     private Long locationId;
 
+    // Required only when locationId points to the "Others" location.
+    // Free-text destination provided by the guest.
+    private String customDestination;
+
     public String getGuestName() { return guestName; }
     public void setGuestName(String guestName) { this.guestName = guestName; }
 
@@ -36,4 +40,7 @@ public class RideRequestDto {
 
     public Long getLocationId() { return locationId; }
     public void setLocationId(Long locationId) { this.locationId = locationId; }
+
+    public String getCustomDestination() { return customDestination; }
+    public void setCustomDestination(String customDestination) { this.customDestination = customDestination; }
 }

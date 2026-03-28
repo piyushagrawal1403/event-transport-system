@@ -5,15 +5,18 @@ import { getGuestRides, type RideRequest } from '../../api/client';
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Waiting for cab...',
-  ASSIGNED: 'Cab assigned!',
+  OFFERED: 'Cab assigned!',
+  ACCEPTED: 'Driver accepted',
   IN_TRANSIT: 'On the way',
   ARRIVED: 'Cab has arrived!',
   COMPLETED: 'Trip completed',
+  CANCELLED: 'Ride cancelled',
 };
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-100 text-yellow-800',
-  ASSIGNED: 'bg-blue-100 text-blue-800',
+  OFFERED: 'bg-blue-100 text-blue-800',
+  ACCEPTED: 'bg-blue-100 text-blue-800',
   IN_TRANSIT: 'bg-indigo-100 text-indigo-800',
   ARRIVED: 'bg-green-100 text-green-800',
   COMPLETED: 'bg-gray-100 text-gray-800',
@@ -78,7 +81,8 @@ export default function RideStatus() {
             {/* Status Header */}
             <div className={`px-4 py-2 flex items-center gap-2 ${STATUS_COLORS[ride.status]}`}>
               {ride.status === 'PENDING' && <Clock className="w-4 h-4" />}
-              {ride.status === 'ASSIGNED' && <Car className="w-4 h-4" />}
+              {ride.status === 'OFFERED' && <Car className="w-4 h-4" />}
+              {ride.status === 'ACCEPTED' && <Car className="w-4 h-4" />}
               {ride.status === 'IN_TRANSIT' && <Car className="w-4 h-4" />}
               {ride.status === 'ARRIVED' && <CheckCircle2 className="w-4 h-4" />}
               {ride.status === 'COMPLETED' && <CheckCircle2 className="w-4 h-4" />}
@@ -100,7 +104,7 @@ export default function RideStatus() {
               </div>
 
               {/* Assigned info */}
-              {ride.cab && (ride.status === 'ASSIGNED' || ride.status === 'IN_TRANSIT' || ride.status === 'ARRIVED') && (
+              {ride.cab && (ride.status === 'OFFERED' || ride.status === 'ACCEPTED' || ride.status === 'IN_TRANSIT' || ride.status === 'ARRIVED') && (
                 <div className="bg-blue-50 rounded-xl p-4 space-y-3">
                   {/* Cab Plate */}
                   <div className="flex items-center gap-3">
@@ -118,7 +122,7 @@ export default function RideStatus() {
                   </a>
 
                   {/* OTP */}
-                  {ride.dropoffOtp && (
+                  {ride.dropoffOtp && (ride.status === 'ACCEPTED' || ride.status === 'ARRIVED') && (
                     <div className="bg-white rounded-xl p-4 text-center border-2 border-blue-200">
                       <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-1">
                         <KeyRound className="w-4 h-4" />
@@ -127,7 +131,7 @@ export default function RideStatus() {
                       <div className="text-4xl font-mono font-bold tracking-widest text-blue-600">
                         {ride.dropoffOtp}
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">Share this with your driver at dropoff</p>
+                      <p className="text-xs text-gray-400 mt-1">Share this with your driver to start the trip</p>
                     </div>
                   )}
                 </div>

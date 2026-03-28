@@ -2,9 +2,9 @@ package com.dispatch.dto;
 
 import jakarta.validation.constraints.NotBlank;
 
-public class CompleteRequestDto {
+public class StartTripDto {
 
-    @NotBlank(message = "OTP is required")
+    @NotBlank(message = "OTP is required to start the trip")
     private String otp;
 
     public String getOtp() { return otp; }

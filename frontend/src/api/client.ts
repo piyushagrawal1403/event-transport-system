@@ -169,4 +169,12 @@ export const getNotifications = (since?: string) =>
       params: since ? { since } : {}
     });
 
+// === Push Notification Endpoints ===
+
+export const subscribeToPush = (subscription: any) =>
+    api.post('/api/v1/push/subscribe', subscription);
+
+export const getVapidPublicKey = () =>
+    api.get<{ vapidPublicKey: string }>('/api/v1/push/vapid-public-key');
+
 export default api;

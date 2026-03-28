@@ -21,6 +21,9 @@ public class EventNotification {
     @Column(nullable = false)
     private boolean dismissed = false;
 
+    @Column(name = "target_phone")
+    private String targetPhone; // null = broadcast to all admins, specific phone = targeted to driver
+
     @PrePersist
     public void prePersist() {
         this.createdAt = Instant.now();
@@ -32,10 +35,17 @@ public class EventNotification {
         this.message = message;
     }
 
+    public EventNotification(String message, String targetPhone) {
+        this.message = message;
+        this.targetPhone = targetPhone;
+    }
+
     public Long getId() { return id; }
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
     public Instant getCreatedAt() { return createdAt; }
     public boolean isDismissed() { return dismissed; }
     public void setDismissed(boolean dismissed) { this.dismissed = dismissed; }
+    public String getTargetPhone() { return targetPhone; }
+    public void setTargetPhone(String targetPhone) { this.targetPhone = targetPhone; }
 }

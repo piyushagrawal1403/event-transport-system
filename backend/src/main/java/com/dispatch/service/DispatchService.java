@@ -3,6 +3,7 @@ package com.dispatch.service;
 import com.dispatch.dto.AssignRequestDto;
 import com.dispatch.model.*;
 import com.dispatch.repository.CabRepository;
+import com.dispatch.repository.EventNotificationRepository;
 import com.dispatch.repository.RideRequestRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,10 +16,16 @@ public class DispatchService {
 
     private final CabRepository cabRepository;
     private final RideRequestRepository rideRequestRepository;
+    private final EventNotificationRepository eventNotificationRepository;
+    private final PushNotificationService pushNotificationService;
 
-    public DispatchService(CabRepository cabRepository, RideRequestRepository rideRequestRepository) {
+    public DispatchService(CabRepository cabRepository, RideRequestRepository rideRequestRepository,
+                          EventNotificationRepository eventNotificationRepository,
+                          PushNotificationService pushNotificationService) {
         this.cabRepository = cabRepository;
         this.rideRequestRepository = rideRequestRepository;
+        this.eventNotificationRepository = eventNotificationRepository;
+        this.pushNotificationService = pushNotificationService;
     }
 
     // ── Assign (Admin → Driver) ───────────────────────────────────────────────
@@ -71,6 +78,12 @@ public class DispatchService {
             ride.setAssignedAt(now);
         }
         rideRequestRepository.saveAll(rides);
+
+        // Send push notification to driver
+        if (cab.getDriverPhone() != null) {
+            pushNotificationService.sendPushToDriver(cab.getDriverPhone(), "New Ride Assignment", 
+                String.format("You have been assigned %d ride(s) for pickup. Please check your dashboard.", rides.size()));
+        }
 
         Map<String, String> result = new HashMap<>();
         result.put("magicLinkId", magicLinkId);
@@ -238,5 +251,48 @@ public class DispatchService {
             r.setStatus(RideStatus.ARRIVED);
         }
         rideRequestRepository.saveAll(batch);
+    }
+
+    // ── Ride Cancellation with Notification ──────────────────────────────────
+
+    /**
+     * Cancel an accepted ride and notify the driver.
+     * Reverts all rides in the batch to PENDING and frees the cab.
+     */
+    @Transactional
+    public void cancelAcceptedRide(Long rideId) {
+        RideRequest ride = rideRequestRepository.findById(rideId)
+                .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
+
+        if (ride.getStatus() != RideStatus.ACCEPTED && ride.getStatus() != RideStatus.ARRIVED) {
+            throw new IllegalStateException("Can only cancel ACCEPTED or ARRIVED rides");
+        }
+
+        String driverPhone = ride.getCab() != null ? ride.getCab().getDriverPhone() : null;
+
+        Cab cab = ride.getCab();
+        if (cab != null) {
+            cab.setStatus(CabStatus.AVAILABLE);
+            cabRepository.save(cab);
+        }
+
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+        for (RideRequest r : batch) {
+            r.setStatus(RideStatus.CANCELLED);
+            r.setMagicLinkId(null);
+            r.setAssignedAt(null);
+        }
+        rideRequestRepository.saveAll(batch);
+
+        // Send targeted notification to driver
+        if (driverPhone != null) {
+            String message = String.format("Your accepted ride #%d has been cancelled by admin", rideId);
+            EventNotification notification = new EventNotification(message, driverPhone);
+            eventNotificationRepository.save(notification);
+
+            // Send push notification
+            pushNotificationService.sendPushToDriver(driverPhone, "Ride Cancelled", 
+                String.format("Ride #%d has been cancelled. You are now available for new assignments", rideId));
+        }
     }
 }

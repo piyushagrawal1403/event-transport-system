@@ -17,13 +17,16 @@ public class RideService {
     private final RideRequestRepository rideRequestRepository;
     private final LocationRepository locationRepository;
     private final CabRepository cabRepository;
+    private final PushNotificationService pushNotificationService;
 
     public RideService(RideRequestRepository rideRequestRepository,
                        LocationRepository locationRepository,
-                       CabRepository cabRepository) {
+                       CabRepository cabRepository,
+                       PushNotificationService pushNotificationService) {
         this.rideRequestRepository = rideRequestRepository;
         this.locationRepository = locationRepository;
         this.cabRepository = cabRepository;
+        this.pushNotificationService = pushNotificationService;
     }
 
     @Transactional
@@ -46,7 +49,14 @@ public class RideService {
         ride.setCustomDestination(dto.getCustomDestination());
         ride.setStatus(RideStatus.PENDING);
 
-        return rideRequestRepository.save(ride);
+        RideRequest savedRide = rideRequestRepository.save(ride);
+
+        // Notify admin that a new ride needs assignment
+        pushNotificationService.sendPushToAdmins("New Ride Request",
+                String.format("New ride request from %s (%d pax) needs assignment",
+                        dto.getGuestName(), dto.getPassengerCount()));
+
+        return savedRide;
     }
 
     public List<RideRequest> getPendingRides() {
@@ -133,8 +143,26 @@ public class RideService {
         }
 
         ride.setStatus(RideStatus.CANCELLED);
+
+        // Notify admin about any guest cancellation so the queue/ops team stays updated
+        pushNotificationService.sendPushToAdmins("Guest Cancelled Ride",
+                String.format("Guest %s cancelled ride #%d", ride.getGuestName(), rideId));
+
+        // Notify driver only if this ride had already been dispatched to a cab
+        if (wasDispatched && ride.getCab() != null) {
+            String driverPhone = ride.getCab().getDriverPhone();
+
+
+            // Notify driver about guest cancellation
+            if (driverPhone != null) {
+                pushNotificationService.sendPushToDriver(driverPhone, "Ride Cancelled by Guest",
+                        String.format("Ride #%d was cancelled by the guest. You are now available.", rideId));
+            }
+        }
+
         return rideRequestRepository.save(ride);
     }
+
 
     private String sanitizePhone(String phone) {
         if (phone == null) return null;

@@ -8,6 +8,7 @@ import {
   acceptRide, denyRide, markArrived, startTrip, completeTrip,
   type Cab, type RideRequest
 } from '../../api/client';
+import { pushNotificationService } from '../../services/PushNotificationService';
 
 export default function DriverDashboard() {
   const [phone, setPhone] = useState('');
@@ -77,13 +78,32 @@ export default function DriverDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn, phone]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.trim()) {
       const sanitized = sanitizePhone(phone.trim());
+
+      let permissionGranted = false;
+      try {
+        permissionGranted = await pushNotificationService.requestPermission();
+        if (permissionGranted) {
+          await pushNotificationService.subscribeUser(sanitized, 'DRIVER', {
+            permissionAlreadyGranted: true,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to enable push notifications during driver login:', error);
+      }
+
       localStorage.setItem('driverPhone', sanitized);
       setPhone(sanitized);
       setLoggedIn(true);
+
+      if (!permissionGranted) {
+        window.setTimeout(() => {
+          alert('Push notifications were not enabled. For localhost testing, use a regular browser window instead of incognito/private mode and allow notifications for this site.');
+        }, 0);
+      }
     }
   };
 

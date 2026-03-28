@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Car, Users, Clock, MapPin, CheckCircle2, AlertTriangle,
-  RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award, Flag
+  RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award, Flag, Bell, BellRing
 } from 'lucide-react';
 import {
   getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
   type RideRequest, type Cab, type EventItinerary, type Location
 } from '../../api/client';
 import api from '../../api/client';
+import { pushNotificationService } from '../../services/PushNotificationService';
 
 interface LocationGroup {
   locationId: number;
@@ -46,6 +47,9 @@ export default function Dashboard() {
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventForm, setEventForm] = useState({ title: '', description: '', startTime: '', endTime: '', locationId: '', notifyGuests: false });
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [adminPushPermission, setAdminPushPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
+  const [adminPushEnabled, setAdminPushEnabled] = useState(false);
+  const [enablingAdminPush, setEnablingAdminPush] = useState(false);
 
   const DEFAULT_CAB_CAPACITY = 4;
 
@@ -103,7 +107,9 @@ export default function Dashboard() {
       const [evRes, locRes] = await Promise.allSettled([getEvents(), getLocations()]);
       if (evRes.status === 'fulfilled') setEvents(evRes.value.data);
       if (locRes.status === 'fulfilled') setLocations(locRes.value.data);
-    } catch {}
+    } catch {
+      // Retry on next refresh
+    }
   }, []);
 
   useEffect(() => {
@@ -112,6 +118,54 @@ export default function Dashboard() {
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, [fetchData, fetchEvents]);
+
+  // Initialize push notifications for admin
+  useEffect(() => {
+    const initializeAdminPush = async () => {
+      await pushNotificationService.initialize();
+
+      if (typeof Notification === 'undefined') {
+        setAdminPushPermission('unsupported');
+        setAdminPushEnabled(false);
+        return;
+      }
+
+      setAdminPushPermission(Notification.permission);
+
+      if (Notification.permission === 'granted') {
+        const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+          permissionAlreadyGranted: true,
+        });
+        setAdminPushEnabled(subscribed);
+      }
+    };
+
+    initializeAdminPush();
+  }, []);
+
+  const handleEnableAdminNotifications = async () => {
+    setEnablingAdminPush(true);
+    try {
+      await pushNotificationService.initialize();
+      const granted = await pushNotificationService.requestPermission();
+      setAdminPushPermission(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+
+      if (!granted) {
+        setAdminPushEnabled(false);
+        return;
+      }
+
+      const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+        permissionAlreadyGranted: true,
+      });
+      setAdminPushEnabled(subscribed);
+    } catch (error) {
+      console.error('Failed to enable admin push notifications:', error);
+      setAdminPushEnabled(false);
+    } finally {
+      setEnablingAdminPush(false);
+    }
+  };
 
   const toggleRide = (rideId: number, paxCount: number) => {
     setSelectedRides(prev => {
@@ -182,6 +236,34 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className={`hidden sm:inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                  adminPushEnabled
+                    ? 'bg-green-900 text-green-200'
+                    : adminPushPermission === 'denied'
+                      ? 'bg-red-900 text-red-200'
+                      : 'bg-yellow-900 text-yellow-200'
+                }`}>
+                  {adminPushEnabled ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+                  {adminPushEnabled
+                    ? 'Admin notifications on'
+                    : adminPushPermission === 'denied'
+                      ? 'Notifications blocked'
+                      : adminPushPermission === 'unsupported'
+                        ? 'Notifications unsupported'
+                        : 'Notifications off'}
+                </span>
+                {!adminPushEnabled && adminPushPermission !== 'unsupported' && (
+                  <button
+                    onClick={handleEnableAdminNotifications}
+                    disabled={enablingAdminPush}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {enablingAdminPush ? 'Enabling…' : 'Enable notifications'}
+                  </button>
+                )}
+              </div>
               <span className="text-xs text-gray-500">Updated {lastRefresh.toLocaleTimeString()}</span>
               <button onClick={fetchData} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition">
                 <RefreshCw className="w-4 h-4" />

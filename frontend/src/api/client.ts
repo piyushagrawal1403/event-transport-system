@@ -24,7 +24,7 @@ export interface RideRequest {
   guestPhone: string;
   passengerCount: number;
   direction: 'TO_VENUE' | 'TO_HOTEL';
-  status: 'PENDING' | 'ASSIGNED' | 'IN_TRANSIT' | 'ARRIVED' | 'COMPLETED';
+  status: 'PENDING' | 'ASSIGNED' | 'IN_TRANSIT' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED';
   location: Location;
   cab: Cab | null;
   dropoffOtp: string | null;
@@ -111,5 +111,8 @@ export const getEvents = () =>
 
 export const updateCabStatus = (phone: string, status: 'AVAILABLE' | 'OFFLINE') =>
   api.put<{ status: string; message: string }>('/api/v1/cabs/status', { phone, status });
+
+export const cancelRide = (rideId: number) =>
+  api.delete<RideRequest>(`/api/v1/rides/${rideId}`);
 
 export default api;

@@ -162,13 +162,13 @@ export default function DriverDashboard() {
                       setTogglingStatus(false);
                     }
                   }}
-                  className={`relative w-14 h-7 rounded-full transition ${
+                  className={`relative inline-flex items-center w-12 h-6 rounded-full transition ${
                     myCab.status === 'BUSY' ? 'bg-gray-300 cursor-not-allowed' :
                     myCab.status === 'OFFLINE' ? 'bg-gray-300' : 'bg-green-500'
                   }`}
                 >
-                  <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${
-                    myCab.status !== 'OFFLINE' ? 'translate-x-7' : 'translate-x-0.5'
+                  <span className={`inline-block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                    myCab.status !== 'OFFLINE' ? 'translate-x-6' : 'translate-x-0.5'
                   }`} />
                 </button>
               </div>

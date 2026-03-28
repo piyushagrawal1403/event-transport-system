@@ -54,4 +54,16 @@ public class RideController {
     public ResponseEntity<List<RideRequest>> getCabCompletedRides(@PathVariable Long cabId) {
         return ResponseEntity.ok(rideService.getCompletedRidesByCab(cabId));
     }
+
+    @DeleteMapping("/{rideId}")
+    public ResponseEntity<?> cancelRide(@PathVariable Long rideId) {
+        try {
+            RideRequest cancelled = rideService.cancelRide(rideId);
+            return ResponseEntity.ok(cancelled);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
+        }
+    }
 }

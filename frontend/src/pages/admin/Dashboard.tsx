@@ -5,7 +5,7 @@ import {
 
 } from 'lucide-react';
 import {
-  getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations,
+  getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
   type RideRequest, type Cab, type EventItinerary, type Location
 } from '../../api/client';
 import api from '../../api/client';
@@ -34,7 +34,7 @@ export default function Dashboard() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [showEvents, setShowEvents] = useState(true);
   const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({ title: '', description: '', startTime: '', endTime: '', locationId: '' });
+  const [eventForm, setEventForm] = useState({ title: '', description: '', startTime: '', endTime: '', locationId: '', notifyGuests: false });
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   const DEFAULT_CAB_CAPACITY = 4;
@@ -345,7 +345,7 @@ export default function Dashboard() {
                           <span>{ride.direction === 'TO_VENUE' ? '→ Venue' : '→ Hotel'}</span>
                         </div>
                       </div>
-                      <div className={`flex flex-col items-end`}>
+                      <div className={`flex flex-col items-end gap-1`}>
                         <span className={`text-sm font-mono font-bold ${waitMins >= 15 ? 'text-red-400 animate-pulse' : waitMins >= 10 ? 'text-orange-400' : waitMins >= 5 ? 'text-yellow-400' : 'text-gray-300'}`}>
                           <Clock className="w-4 h-4 inline mr-1" />
                           {getWaitTime(ride.requestedAt)}
@@ -353,6 +353,22 @@ export default function Dashboard() {
                         {waitMins >= 15 && (
                           <span className="text-xs text-red-400 font-semibold">OVERDUE</span>
                         )}
+                        <button
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!confirm(`Cancel ride for ${ride.guestName}?`)) return;
+                            try {
+                              await cancelRide(ride.id);
+                              fetchData();
+                            } catch {
+                              alert('Failed to cancel ride');
+                            }
+                          }}
+                          className="text-xs text-red-400 hover:text-red-300 font-medium"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </label>
                   );
@@ -475,7 +491,7 @@ export default function Dashboard() {
             {showEvents && (
               <div className="px-4 pb-4 space-y-2">
                 <button
-                  onClick={() => { setShowEventForm(true); setEditingEventId(null); setEventForm({ title: '', description: '', startTime: '', endTime: '', locationId: locations[0]?.id?.toString() || '' }); }}
+                  onClick={() => { setShowEventForm(true); setEditingEventId(null); setEventForm({ title: '', description: '', startTime: '', endTime: '', locationId: locations[0]?.id?.toString() || '', notifyGuests: false }); }}
                   className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition"
                 >
                   + Add Event
@@ -498,9 +514,13 @@ export default function Dashboard() {
                     <select value={eventForm.locationId} onChange={e => setEventForm(f => ({...f, locationId: e.target.value}))} className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white outline-none">
                       {locations.filter(l => l.isMainVenue).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
+                    <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                      <input type="checkbox" checked={eventForm.notifyGuests} onChange={e => setEventForm(f => ({...f, notifyGuests: e.target.checked}))} className="rounded bg-gray-600 border-gray-500" />
+                      Notify all guests (SMS)
+                    </label>
                     <div className="flex gap-2">
                       <button onClick={async () => {
-                        const payload = { title: eventForm.title, description: eventForm.description || null, startTime: eventForm.startTime, endTime: eventForm.endTime, locationId: Number(eventForm.locationId) };
+                        const payload = { title: eventForm.title, description: eventForm.description || null, startTime: eventForm.startTime, endTime: eventForm.endTime, locationId: Number(eventForm.locationId), notifyGuests: eventForm.notifyGuests };
                         try {
                           if (editingEventId) { await api.put(`/api/v1/events/${editingEventId}`, payload); }
                           else { await api.post('/api/v1/events', payload); }
@@ -525,7 +545,7 @@ export default function Dashboard() {
                       </div>
                       <button onClick={() => {
                         setEditingEventId(ev.id);
-                        setEventForm({ title: ev.title, description: ev.description || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString() });
+                        setEventForm({ title: ev.title, description: ev.description || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString(), notifyGuests: false });
                         setShowEventForm(true);
                       }} className="text-xs text-blue-400 hover:text-blue-300">Edit</button>
                     </div>

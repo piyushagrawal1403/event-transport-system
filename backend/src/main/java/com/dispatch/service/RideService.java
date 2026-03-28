@@ -2,6 +2,7 @@ package com.dispatch.service;
 
 import com.dispatch.dto.RideRequestDto;
 import com.dispatch.model.*;
+import com.dispatch.repository.CabRepository;
 import com.dispatch.repository.LocationRepository;
 import com.dispatch.repository.RideRequestRepository;
 import org.springframework.stereotype.Service;
@@ -15,10 +16,12 @@ public class RideService {
 
     private final RideRequestRepository rideRequestRepository;
     private final LocationRepository locationRepository;
+    private final CabRepository cabRepository;
 
-    public RideService(RideRequestRepository rideRequestRepository, LocationRepository locationRepository) {
+    public RideService(RideRequestRepository rideRequestRepository, LocationRepository locationRepository, CabRepository cabRepository) {
         this.rideRequestRepository = rideRequestRepository;
         this.locationRepository = locationRepository;
+        this.cabRepository = cabRepository;
     }
 
     @Transactional
@@ -62,6 +65,37 @@ public class RideService {
 
     public List<RideRequest> getCompletedRidesByCab(Long cabId) {
         return rideRequestRepository.findByCabIdAndStatus(cabId, RideStatus.COMPLETED);
+    }
+
+    @Transactional
+    public RideRequest cancelRide(Long rideId) {
+        RideRequest ride = rideRequestRepository.findById(rideId)
+                .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
+
+        if (ride.getStatus() == RideStatus.COMPLETED) {
+            throw new IllegalStateException("Cannot cancel a completed ride");
+        }
+        if (ride.getStatus() == RideStatus.CANCELLED) {
+            throw new IllegalStateException("Ride is already cancelled");
+        }
+
+        if (ride.getStatus() == RideStatus.ASSIGNED || ride.getStatus() == RideStatus.IN_TRANSIT || ride.getStatus() == RideStatus.ARRIVED) {
+            Cab cab = ride.getCab();
+            if (cab != null) {
+                // Check if there are other non-cancelled rides for this cab's current trip
+                List<RideRequest> siblingRides = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+                long activeCount = siblingRides.stream()
+                        .filter(r -> r.getId() != rideId && r.getStatus() != RideStatus.CANCELLED && r.getStatus() != RideStatus.COMPLETED)
+                        .count();
+                if (activeCount == 0) {
+                    cab.setStatus(CabStatus.AVAILABLE);
+                    cabRepository.save(cab);
+                }
+            }
+        }
+
+        ride.setStatus(RideStatus.CANCELLED);
+        return rideRequestRepository.save(ride);
     }
 
     private String sanitizePhone(String phone) {

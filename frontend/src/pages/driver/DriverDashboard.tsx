@@ -129,7 +129,7 @@ export default function DriverDashboard() {
     setOtpError('');
     setOtpLoading(true);
     try {
-      const res = await startTrip(otpRideId, otpInput.trim());
+      await startTrip(otpRideId, otpInput.trim());
       // Success: trip started
       setOtpRideId(null);
       setOtpInput('');

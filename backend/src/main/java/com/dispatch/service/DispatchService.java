@@ -133,6 +133,8 @@ public class DispatchService {
         }
 
         Cab cab = ride.getCab();
+        String driverName = cab != null ? cab.getDriverName() : "Driver";
+        String cabPlate = cab != null ? cab.getLicensePlate() : "unknown cab";
         if (cab != null) {
             cab.setStatus(CabStatus.AVAILABLE);
             cabRepository.save(cab);
@@ -141,12 +143,20 @@ public class DispatchService {
         List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.PENDING);
+            r.setDriverDeniedCount((r.getDriverDeniedCount() == null ? 0 : r.getDriverDeniedCount()) + 1);
             r.setCab(null);
             r.setDropoffOtp(null);
             r.setMagicLinkId(null);
             r.setAssignedAt(null);
+            r.setAcceptedAt(null);
         }
-        return rideRequestRepository.saveAll(batch);
+        List<RideRequest> savedBatch = rideRequestRepository.saveAll(batch);
+
+        String message = String.format("%s denied %d ride(s) on %s. Reassignment needed.", driverName, savedBatch.size(), cabPlate);
+        eventNotificationRepository.save(new EventNotification(message));
+        pushNotificationService.sendPushToAdmins("Driver Denied Ride", message);
+
+        return savedBatch;
     }
 
     // ── Trip Start (OTP gate) ─────────────────────────────────────────────────

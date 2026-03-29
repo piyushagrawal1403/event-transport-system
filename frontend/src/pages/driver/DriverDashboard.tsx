@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   getCabs, getCabActiveRides, getCabCompletedRides, updateCabStatus,
-  acceptRide, denyRide, markArrived, startTrip, completeTrip,
+  acceptRide, denyRide, markArrived, startTrip, completeTrip, getConfig,
   type Cab, type RideRequest
 } from '../../api/client';
 import { pushNotificationService } from '../../services/PushNotificationService';
@@ -35,6 +35,17 @@ export default function DriverDashboard() {
   // Mark as arrived loading per ride
   const [arrivingRideId, setArrivingRideId] = useState<number | null>(null);
 
+  // Admin contact
+  const [adminPhone, setAdminPhone] = useState('');
+  const [adminName, setAdminName] = useState('');
+
+  useEffect(() => {
+    getConfig().then(r => {
+      setAdminPhone(r.data.adminPhone);
+      setAdminName(r.data.adminName);
+    }).catch(() => {});
+  }, []);
+
   const sanitizePhone = (p: string) => {
     const digits = p.replace(/[^\d]/g, '');
     return digits.startsWith('91') && digits.length === 12 ? digits.substring(2) : digits.slice(-10);
@@ -44,6 +55,37 @@ export default function DriverDashboard() {
     const savedPhone = localStorage.getItem('driverPhone');
     if (savedPhone) { setPhone(savedPhone); setLoggedIn(true); }
   }, []);
+
+  useEffect(() => {
+    if (!loggedIn || !phone) return;
+
+    let active = true;
+    const ensureDriverPushSubscription = async () => {
+      try {
+        await pushNotificationService.initialize();
+
+        if (typeof Notification === 'undefined') {
+          return;
+        }
+
+        let granted = Notification.permission === 'granted';
+        if (!granted && Notification.permission === 'default') {
+          granted = await pushNotificationService.requestPermission();
+        }
+
+        if (granted && active) {
+          await pushNotificationService.subscribeUser(phone, 'DRIVER', {
+            permissionAlreadyGranted: true,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to initialize driver push notifications:', error);
+      }
+    };
+
+    ensureDriverPushSubscription();
+    return () => { active = false; };
+  }, [loggedIn, phone]);
 
   useEffect(() => {
     if (!loggedIn) return;
@@ -157,15 +199,16 @@ export default function DriverDashboard() {
         const ridesRes = await getCabActiveRides(myCab.id);
         setActiveTrips(ridesRes.data);
       }
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 400 && error.response.data && error.response.data.success === false) {
-          if (error.response.data.message === 'Incorrect OTP') {
+    } catch (error) {
+      const response = (error as { response?: { status?: number; data?: { success?: boolean; message?: string } } }).response;
+      if (response) {
+        if (response.status === 400 && response.data && response.data.success === false) {
+          if (response.data.message === 'Incorrect OTP') {
             setOtpError('Incorrect OTP. Ask the guest to check their booking.');
           } else {
-            setOtpError(`Something went wrong: ${error.response.data.message}`);
+            setOtpError(`Something went wrong: ${response.data.message}`);
           }
-        } else if (error.response.status === 404) {
+        } else if (response.status === 404) {
           setOtpError('Ride not found. Please refresh the page.');
         } else {
           setOtpError('Something went wrong. Please try again.');
@@ -464,6 +507,22 @@ export default function DriverDashboard() {
                       <p className="font-bold text-gray-800">{myCab.capacity} seats</p>
                     </div>
                   </div>
+                  {/* Admin support */}
+                  {adminPhone && (
+                      <div className="bg-white rounded-xl shadow-sm px-4 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Support Helpline</p>
+                          <p className="text-sm font-semibold text-gray-800 truncate">{adminName || 'Event Admin'}</p>
+                        </div>
+                        <a
+                            href={`tel:${adminPhone}`}
+                            className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg transition flex-shrink-0"
+                        >
+                          <Phone className="w-4 h-4" />
+                          {adminPhone}
+                        </a>
+                      </div>
+                  )}
                 </div>
 
                 {/* Active trips */}

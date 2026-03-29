@@ -1,8 +1,10 @@
 package com.dispatch.config;
 
+import com.dispatch.model.AppSetting;
 import com.dispatch.model.Cab;
 import com.dispatch.model.EventItinerary;
 import com.dispatch.model.Location;
+import com.dispatch.repository.AppSettingRepository;
 import com.dispatch.repository.CabRepository;
 import com.dispatch.repository.EventItineraryRepository;
 import com.dispatch.repository.LocationRepository;
@@ -19,17 +21,28 @@ public class DataSeeder implements CommandLineRunner {
     private final LocationRepository locationRepository;
     private final CabRepository cabRepository;
     private final EventItineraryRepository eventRepository;
+    private final AppSettingRepository settingRepository;
 
-    public DataSeeder(LocationRepository locationRepository, CabRepository cabRepository, EventItineraryRepository eventRepository) {
+    public DataSeeder(LocationRepository locationRepository,
+                      CabRepository cabRepository,
+                      EventItineraryRepository eventRepository,
+                      AppSettingRepository settingRepository) {
         this.locationRepository = locationRepository;
         this.cabRepository = cabRepository;
         this.eventRepository = eventRepository;
+        this.settingRepository = settingRepository;
     }
 
     @Override
     public void run(String... args) {
+        // Seed admin settings with defaults if not already set
+        settingRepository.findById("admin.phone")
+                .orElseGet(() -> settingRepository.save(new AppSetting("admin.phone", "+91-9900000000")));
+        settingRepository.findById("admin.name")
+                .orElseGet(() -> settingRepository.save(new AppSetting("admin.name", "Event Admin")));
+
         if (locationRepository.count() > 0) {
-            return; // Already seeded
+            return; // Locations/cabs/events already seeded
         }
 
         // Main venue
@@ -95,6 +108,7 @@ public class DataSeeder implements CommandLineRunner {
         }
 
         System.out.println("Seeded: 1 venue, 30 hotels, 1 Others location, 40 cabs, 9 events");
+        System.out.println("Admin settings editable from the Admin Dashboard → Settings panel.");
     }
 
     private void seedEvent(String title, String description, Location location, LocalDate date, LocalTime start, LocalTime end) {

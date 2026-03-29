@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, CheckCircle2, ChevronUp, Navigation, Flag } from 'lucide-react';
-import { createRide, getLocations, getGuestRides, cancelRide, type Location, type RideRequest } from '../../api/client';
+import { createRide, getLocations, getGuestRides, cancelRide, getConfig, type Location, type RideRequest, type RideRequestPayload } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
+import { pushNotificationService } from '../../services/PushNotificationService';
 
 const MAX_CAB_CAPACITY = 4;
 
@@ -45,6 +46,8 @@ export default function GuestHome() {
   // Active rides state
   const [activeRides, setActiveRides] = useState<RideRequest[]>([]);
   const [, setLoadingRides] = useState(true);
+  const [adminPhone, setAdminPhone] = useState('');
+  const [adminName, setAdminName] = useState('');
 
   useEffect(() => {
     if (!guestName || !guestPhone) {
@@ -57,6 +60,44 @@ export default function GuestHome() {
       if (hotels.length > 0) setSelectedLocationId(hotels[0].id);
     }).catch(() => setError('Failed to load locations'));
   }, [guestName, guestPhone, navigate]);
+
+  useEffect(() => {
+    getConfig().then(res => {
+      setAdminPhone(res.data.adminPhone || '');
+      setAdminName(res.data.adminName || '');
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!guestPhone) return;
+
+    let active = true;
+    const enableGuestPush = async () => {
+      try {
+        await pushNotificationService.initialize();
+
+        if (typeof Notification === 'undefined') {
+          return;
+        }
+
+        let granted = Notification.permission === 'granted';
+        if (!granted && Notification.permission === 'default') {
+          granted = await pushNotificationService.requestPermission();
+        }
+
+        if (granted && active) {
+          await pushNotificationService.subscribeUser(guestPhone, 'GUEST', {
+            permissionAlreadyGranted: true,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to initialize guest push notifications:', error);
+      }
+    };
+
+    enableGuestPush();
+    return () => { active = false; };
+  }, [guestPhone]);
 
   const fetchRides = useCallback(async () => {
     if (!guestPhone) return;
@@ -89,7 +130,7 @@ export default function GuestHome() {
       while (remaining > 0) {
         const count = Math.min(remaining, MAX_CAB_CAPACITY);
         const selectedLocation = hotels.find(h => h.id === selectedLocationId);
-        const payload: any = { guestName, guestPhone, passengerCount: count, direction, locationId: selectedLocationId };
+        const payload: RideRequestPayload = { guestName, guestPhone, passengerCount: count, direction, locationId: selectedLocationId };
         if (selectedLocation?.name === 'Others') {
           payload.customDestination = customDestination.trim();
         }
@@ -132,6 +173,23 @@ export default function GuestHome() {
       <div className="max-w-md mx-auto p-4 space-y-4">
         {/* Event Schedule - always visible */}
         <EventTimeline />
+
+        {/* Admin support */}
+        {adminPhone && (
+          <div className="bg-white rounded-xl shadow-sm px-4 py-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Support Helpline</p>
+              <p className="text-sm font-semibold text-gray-800 truncate">{adminName || 'Event Admin'}</p>
+            </div>
+            <a
+              href={`tel:${adminPhone}`}
+              className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg transition flex-shrink-0"
+            >
+              <Phone className="w-4 h-4" />
+              {adminPhone}
+            </a>
+          </div>
+        )}
 
         {/* Active Rides Section */}
         {hasActiveRides && (

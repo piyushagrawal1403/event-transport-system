@@ -119,11 +119,14 @@ public class RideService {
         if (ride.getStatus() == RideStatus.CANCELLED) {
             throw new IllegalStateException("Ride is already cancelled");
         }
+        if (ride.getStatus() == RideStatus.IN_TRANSIT) {
+            throw new IllegalStateException("Cannot cancel a ride that is already in transit — the driver has started the trip");
+        }
 
         // Free the cab if this was the last active ride in the batch
+        // (IN_TRANSIT is excluded — we block cancellation above; ARRIVED is still allowed)
         boolean wasDispatched = ride.getStatus() == RideStatus.OFFERED
                 || ride.getStatus() == RideStatus.ACCEPTED
-                || ride.getStatus() == RideStatus.IN_TRANSIT
                 || ride.getStatus() == RideStatus.ARRIVED;
 
         if (wasDispatched && ride.getMagicLinkId() != null) {

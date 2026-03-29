@@ -29,6 +29,10 @@ public class PushSubscriptionController {
             String userPhone = request.get("userPhone");
             String userType = request.get("userType"); // "ADMIN" or "DRIVER"
 
+            if (isBlank(endpoint) || isBlank(p256dh) || isBlank(auth) || isBlank(userPhone) || isBlank(userType)) {
+                return ResponseEntity.badRequest().body(Map.of("success", "false", "error", "Missing required push subscription fields"));
+            }
+
             pushNotificationService.subscribeUser(endpoint, p256dh, auth, userPhone, userType);
             return ResponseEntity.ok(Map.of("success", "true", "message", "Subscribed to push notifications"));
         } catch (Exception e) {
@@ -50,6 +54,10 @@ public class PushSubscriptionController {
     @GetMapping("/vapid-public-key")
     public ResponseEntity<Map<String, String>> getVapidPublicKey() {
         return ResponseEntity.ok(Map.of("vapidPublicKey", vapidPublicKey == null ? "" : vapidPublicKey));
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }
 

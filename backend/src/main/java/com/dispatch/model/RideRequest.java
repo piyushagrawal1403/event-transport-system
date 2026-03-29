@@ -53,6 +53,10 @@ public class RideRequest {
     // Set when the driver explicitly accepts the offered trip
     private Instant acceptedAt;
 
+    // Incremented each time a driver denies this ride and it returns to PENDING
+    @Column(nullable = false)
+    private Integer driverDeniedCount = 0;
+
     public RideRequest() {}
 
     @PrePersist
@@ -62,6 +66,9 @@ public class RideRequest {
         }
         if (this.status == null) {
             this.status = RideStatus.PENDING;
+        }
+        if (this.driverDeniedCount == null) {
+            this.driverDeniedCount = 0;
         }
     }
 
@@ -108,4 +115,7 @@ public class RideRequest {
 
     public Instant getAcceptedAt() { return acceptedAt; }
     public void setAcceptedAt(Instant acceptedAt) { this.acceptedAt = acceptedAt; }
+
+    public Integer getDriverDeniedCount() { return driverDeniedCount; }
+    public void setDriverDeniedCount(Integer driverDeniedCount) { this.driverDeniedCount = driverDeniedCount; }
 }

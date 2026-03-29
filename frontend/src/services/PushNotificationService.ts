@@ -52,7 +52,7 @@ export class PushNotificationService {
 
   async subscribeUser(
     userPhone: string,
-    userType: string,
+    userType: 'ADMIN' | 'DRIVER' | 'GUEST',
     options?: { permissionAlreadyGranted?: boolean }
   ): Promise<boolean> {
     if (!this.serviceWorkerRegistration) {

@@ -11,6 +11,8 @@ public class EventItineraryDto {
 
     private String description;
 
+    private String imageUrl;
+
     @NotNull(message = "Start time is required")
     private LocalDateTime startTime;
 
@@ -25,6 +27,9 @@ public class EventItineraryDto {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
 
     public LocalDateTime getStartTime() { return startTime; }
     public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }

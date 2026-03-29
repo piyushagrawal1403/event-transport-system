@@ -17,6 +17,8 @@ public class EventItinerary {
 
     private String description;
 
+    private String imageUrl;
+
     @Column(nullable = false)
     private LocalDateTime startTime;
 
@@ -37,6 +39,9 @@ public class EventItinerary {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
 
     public LocalDateTime getStartTime() { return startTime; }
     public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }

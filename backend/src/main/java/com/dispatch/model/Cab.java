@@ -32,6 +32,9 @@ public class Cab {
     @Column(nullable = false)
     private Integer tripsDenied = 0;
 
+    @Column
+    private Double totalKm = 0.0;
+
     public Cab() {}
 
     public Cab(String licensePlate, String driverName, String driverPhone, Integer capacity) {
@@ -65,4 +68,7 @@ public class Cab {
 
     public Integer getTripsDenied() { return tripsDenied; }
     public void setTripsDenied(Integer tripsDenied) { this.tripsDenied = tripsDenied; }
+
+    public Double getTotalKm() { return totalKm; }
+    public void setTotalKm(Double totalKm) { this.totalKm = totalKm == null ? 0.0 : Math.max(0.0, totalKm); }
 }

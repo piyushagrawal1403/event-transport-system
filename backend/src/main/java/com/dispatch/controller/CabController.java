@@ -1,11 +1,15 @@
 package com.dispatch.controller;
 
+import com.dispatch.dto.DriverAnalyticsDto;
 import com.dispatch.model.Cab;
 import com.dispatch.model.CabStatus;
+import com.dispatch.model.RideRequest;
 import com.dispatch.repository.CabRepository;
+import com.dispatch.repository.RideRequestRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -14,14 +18,39 @@ import java.util.Map;
 public class CabController {
 
     private final CabRepository cabRepository;
+    private final RideRequestRepository rideRequestRepository;
 
-    public CabController(CabRepository cabRepository) {
+    public CabController(CabRepository cabRepository, RideRequestRepository rideRequestRepository) {
         this.cabRepository = cabRepository;
+        this.rideRequestRepository = rideRequestRepository;
     }
 
     @GetMapping
     public ResponseEntity<List<Cab>> getAllCabs() {
         return ResponseEntity.ok(cabRepository.findAll());
+    }
+
+    @GetMapping("/{cabId}/analytics")
+    public ResponseEntity<DriverAnalyticsDto> getDriverAnalytics(@PathVariable Long cabId) {
+        Cab cab = cabRepository.findById(cabId)
+                .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cabId));
+
+        List<RideRequest> rides = rideRequestRepository.findByCabId(cabId);
+        double avgAcceptanceSeconds = rides.stream()
+                .filter(r -> r.getAssignedAt() != null && r.getAcceptedAt() != null)
+                .mapToLong(r -> Duration.between(r.getAssignedAt(), r.getAcceptedAt()).getSeconds())
+                .average()
+                .orElse(0.0);
+
+        DriverAnalyticsDto dto = new DriverAnalyticsDto();
+        dto.setCabId(cab.getId());
+        dto.setDriverName(cab.getDriverName());
+        dto.setLicensePlate(cab.getLicensePlate());
+        dto.setTotalKm(cab.getTotalKm() == null ? 0.0 : cab.getTotalKm());
+        dto.setTripsCompleted(cab.getTripsCompleted() == null ? 0 : cab.getTripsCompleted());
+        dto.setTripsDenied(cab.getTripsDenied() == null ? 0 : cab.getTripsDenied());
+        dto.setAverageAcceptanceTimeSeconds(avgAcceptanceSeconds);
+        return ResponseEntity.ok(dto);
     }
 
     @PutMapping("/status")

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, MapPin } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { getEvents, type EventItinerary } from '../api/client';
 
 const formatTime = (iso: string) => {
@@ -14,6 +15,7 @@ const formatDate = (iso: string) => {
 
 export default function EventTimeline() {
   const [events, setEvents] = useState<EventItinerary[]>([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetch = () => { getEvents().then(r => setEvents(r.data)).catch(() => {}); };
@@ -50,7 +52,11 @@ export default function EventTimeline() {
                 const isActive = now >= start && now <= end;
                 const isPast = now > end;
                 return (
-                  <div key={ev.id} className={`rounded-lg p-2 text-sm ${isActive ? 'bg-blue-50 border border-blue-200' : isPast ? 'opacity-50' : 'bg-gray-50'}`}>
+                  <button
+                    key={ev.id}
+                    onClick={() => navigate(`/events/${ev.id}`)}
+                    className={`w-full text-left rounded-lg p-2 text-sm transition hover:ring-1 hover:ring-blue-300 ${isActive ? 'bg-blue-50 border border-blue-200' : isPast ? 'opacity-50 bg-gray-50' : 'bg-gray-50'}`}
+                  >
                     <p className={`font-medium ${isActive ? 'text-blue-700' : 'text-gray-800'}`}>
                       {ev.title}
                       {isActive && <span className="ml-2 text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded-full">NOW</span>}
@@ -59,8 +65,7 @@ export default function EventTimeline() {
                       <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatTime(ev.startTime)} - {formatTime(ev.endTime)}</span>
                       <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{ev.location.name}</span>
                     </div>
-                    {ev.description && <p className="text-xs text-gray-500 mt-1">{ev.description}</p>}
-                  </div>
+                  </button>
                 );
               })}
             </div>

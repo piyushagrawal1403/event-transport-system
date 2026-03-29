@@ -31,6 +31,11 @@ public class EventService {
         return eventRepository.findAllByOrderByStartTimeAsc();
     }
 
+    public EventItinerary getEventById(UUID id) {
+        return eventRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Event not found: " + id));
+    }
+
     public EventItinerary createEvent(EventItineraryDto dto) {
         Location location = locationRepository.findById(dto.getLocationId())
                 .orElseThrow(() -> new IllegalArgumentException("Location not found: " + dto.getLocationId()));
@@ -38,6 +43,7 @@ public class EventService {
         EventItinerary event = new EventItinerary();
         event.setTitle(dto.getTitle());
         event.setDescription(dto.getDescription());
+        event.setImageUrl(dto.getImageUrl());
         event.setStartTime(dto.getStartTime());
         event.setEndTime(dto.getEndTime());
         event.setLocation(location);
@@ -59,6 +65,7 @@ public class EventService {
 
         event.setTitle(dto.getTitle());
         event.setDescription(dto.getDescription());
+        event.setImageUrl(dto.getImageUrl());
         event.setStartTime(dto.getStartTime());
         event.setEndTime(dto.getEndTime());
         event.setLocation(location);

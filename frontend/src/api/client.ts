@@ -39,9 +39,13 @@ export interface RideRequest {
   location: Location;
   customDestination: string | null; // populated when location is "Others"
   cab: Cab | null;
+  lastAssignedDriverName: string | null;
+  lastAssignedDriverPhone: string | null;
+  lastAssignedCabLicensePlate: string | null;
   dropoffOtp: string | null;
   magicLinkId: string | null;
   requestedAt: string;
+  updatedAt: string | null;
   assignedAt: string | null;
   acceptedAt: string | null;
   driverDeniedCount: number;
@@ -56,12 +60,57 @@ export interface Cab {
   status: 'AVAILABLE' | 'BUSY' | 'OFFLINE';
   tripsCompleted: number;
   tripsDenied: number;
+  totalKm: number;
 }
 
 export interface Location {
   id: number;
   name: string;
   isMainVenue: boolean;
+  distanceFromMainVenue: number;
+}
+
+export interface DriverAnalytics {
+  cabId: number;
+  driverName: string;
+  licensePlate: string;
+  totalKm: number;
+  tripsCompleted: number;
+  tripsDenied: number;
+  averageAcceptanceTimeSeconds: number;
+}
+
+export type ComplaintStatus = 'OPEN' | 'CLOSED';
+
+export type RideIncidentType = 'GUEST_CANCELLED' | 'DRIVER_DECLINED';
+
+export interface CancelledQueueEntry {
+  id: number;
+  rideRequestId: number;
+  incidentType: RideIncidentType;
+  occurredAt: string;
+  guestName: string;
+  guestPhone: string;
+  passengerCount: number;
+  direction: 'TO_VENUE' | 'TO_HOTEL';
+  locationName: string;
+  customDestination: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  cabLicensePlate: string | null;
+  driverDeniedCount: number | null;
+}
+
+export interface Complaint {
+  id: number;
+  guestName: string;
+  guestPhone: string;
+  message: string;
+  status: ComplaintStatus;
+  createdAt: string;
+  closedAt: string | null;
+  closedBy: string | null;
+  rideRequest: RideRequest | null;
 }
 
 export interface AppNotification {
@@ -109,6 +158,11 @@ export const getCabCompletedRides = (cabId: number) =>
 
 export const getOngoingRides = () =>
     api.get<RideRequest[]>('/api/v1/rides/ongoing');
+
+export const getCancelledRides = (date?: string) =>
+    api.get<CancelledQueueEntry[]>('/api/v1/rides/cancelled', {
+      params: date ? { date } : {}
+    });
 
 export const getLocations = () =>
     api.get<Location[]>('/api/v1/locations');
@@ -159,6 +213,7 @@ export interface EventItinerary {
   id: string;
   title: string;
   description: string | null;
+  imageUrl: string | null;
   startTime: string;
   endTime: string;
   location: Location;
@@ -167,10 +222,53 @@ export interface EventItinerary {
 export const getEvents = () =>
     api.get<EventItinerary[]>('/api/v1/events');
 
+export const getEventById = (id: string) =>
+    api.get<EventItinerary>(`/api/v1/events/${id}`);
+
+export const createEvent = (payload: {
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  startTime: string;
+  endTime: string;
+  locationId: number;
+  notifyGuests?: boolean;
+}) => api.post<EventItinerary>('/api/v1/events', payload);
+
+export const updateEvent = (id: string, payload: {
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  startTime: string;
+  endTime: string;
+  locationId: number;
+  notifyGuests?: boolean;
+}) => api.put<EventItinerary>(`/api/v1/events/${id}`, payload);
+
 // === Cab Endpoints ===
 
 export const updateCabStatus = (phone: string, status: 'AVAILABLE' | 'OFFLINE') =>
     api.put<{ status: string; message: string }>('/api/v1/cabs/status', { phone, status });
+
+export const getCabAnalytics = (cabId: number) =>
+    api.get<DriverAnalytics>(`/api/v1/cabs/${cabId}/analytics`);
+
+// === Complaint Endpoints ===
+
+export const createComplaint = (payload: {
+  guestName: string;
+  guestPhone: string;
+  message: string;
+  rideRequestId?: number;
+}) => api.post<Complaint>('/api/v1/complaints', payload);
+
+export const getComplaints = (status?: ComplaintStatus) =>
+    api.get<Complaint[]>('/api/v1/complaints', {
+      params: status ? { status } : {}
+    });
+
+export const closeComplaint = (id: number, closedBy?: string) =>
+    api.put<Complaint>(`/api/v1/complaints/${id}/close`, closedBy ? { closedBy } : {});
 
 // === Notification Endpoints ===
 

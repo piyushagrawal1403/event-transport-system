@@ -1,13 +1,16 @@
 package com.dispatch.controller;
 
 import com.dispatch.dto.RideRequestDto;
+import com.dispatch.model.RideIncident;
 import com.dispatch.model.RideRequest;
 import com.dispatch.service.DispatchService;
 import com.dispatch.service.RideService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -52,6 +55,12 @@ public class RideController {
     @GetMapping("/ongoing")
     public ResponseEntity<List<RideRequest>> getOngoingRides() {
         return ResponseEntity.ok(rideService.getOngoingRides());
+    }
+
+    @GetMapping("/cancelled")
+    public ResponseEntity<List<RideIncident>> getCancelledRides(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(rideService.getCancelledRides(date));
     }
 
     @GetMapping("/cab/{cabId}/completed")

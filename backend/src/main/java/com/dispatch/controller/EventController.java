@@ -25,6 +25,11 @@ public class EventController {
         return ResponseEntity.ok(eventService.getAllEvents());
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<EventItinerary> getEventById(@PathVariable UUID id) {
+        return ResponseEntity.ok(eventService.getEventById(id));
+    }
+
     @PostMapping
     public ResponseEntity<EventItinerary> createEvent(@Valid @RequestBody EventItineraryDto dto) {
         return ResponseEntity.ok(eventService.createEvent(dto));

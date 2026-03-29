@@ -46,7 +46,7 @@ public class DataSeeder implements CommandLineRunner {
         }
 
         // Main venue
-        locationRepository.save(new Location("Grand Event Center", true));
+        locationRepository.save(new Location("Grand Event Center", true, 0.0));
 
         // Hotels
         String[] hotels = {
@@ -62,12 +62,14 @@ public class DataSeeder implements CommandLineRunner {
                 "Conrad", "Waldorf Astoria", "Peninsula Hotel"
         };
 
-        for (String hotel : hotels) {
-            locationRepository.save(new Location(hotel, false));
+        for (int i = 0; i < hotels.length; i++) {
+            // Seed realistic one-way distances in km from the main venue.
+            double distanceKm = 2.0 + ((i % 10) * 0.8);
+            locationRepository.save(new Location(hotels[i], false, distanceKm));
         }
 
         // "Others" escape-hatch — guests fill in a custom destination at booking time
-        locationRepository.save(new Location("Others", false));
+        locationRepository.save(new Location("Others", false, 0.0));
 
         // 40 drivers
         String[] driverFirstNames = {

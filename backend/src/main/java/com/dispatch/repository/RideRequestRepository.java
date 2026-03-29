@@ -17,4 +17,7 @@ public interface RideRequestRepository extends JpaRepository<RideRequest, Long> 
     List<RideRequest> findByCabIdAndStatusIn(Long cabId, List<RideStatus> statuses);
     List<RideRequest> findByStatusIn(List<RideStatus> statuses);
     List<RideRequest> findByCabIdAndStatus(Long cabId, RideStatus status);
+    List<RideRequest> findByStatusOrderByUpdatedAtDesc(RideStatus status);
+    List<RideRequest> findByStatusAndDriverDeniedCountGreaterThanOrderByUpdatedAtDesc(RideStatus status, Integer driverDeniedCount);
+    List<RideRequest> findByCabId(Long cabId);
 }

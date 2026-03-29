@@ -40,6 +40,12 @@ public class RideRequest {
     @JoinColumn(name = "cab_id")
     private Cab cab;
 
+    private String lastAssignedDriverName;
+
+    private String lastAssignedDriverPhone;
+
+    private String lastAssignedCabLicensePlate;
+
     // OTP is now verified at trip START, not drop-off
     private String dropoffOtp;
 
@@ -47,6 +53,9 @@ public class RideRequest {
 
     @Column(nullable = false)
     private Instant requestedAt;
+
+    @Column
+    private Instant updatedAt;
 
     private Instant assignedAt;
 
@@ -61,8 +70,12 @@ public class RideRequest {
 
     @PrePersist
     public void prePersist() {
+        Instant now = Instant.now();
         if (this.requestedAt == null) {
-            this.requestedAt = Instant.now();
+            this.requestedAt = now;
+        }
+        if (this.updatedAt == null) {
+            this.updatedAt = now;
         }
         if (this.status == null) {
             this.status = RideStatus.PENDING;
@@ -70,6 +83,11 @@ public class RideRequest {
         if (this.driverDeniedCount == null) {
             this.driverDeniedCount = 0;
         }
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        this.updatedAt = Instant.now();
     }
 
     // ── Getters & Setters ──────────────────────────────────────────────────────
@@ -101,6 +119,15 @@ public class RideRequest {
     public Cab getCab() { return cab; }
     public void setCab(Cab cab) { this.cab = cab; }
 
+    public String getLastAssignedDriverName() { return lastAssignedDriverName; }
+    public void setLastAssignedDriverName(String lastAssignedDriverName) { this.lastAssignedDriverName = lastAssignedDriverName; }
+
+    public String getLastAssignedDriverPhone() { return lastAssignedDriverPhone; }
+    public void setLastAssignedDriverPhone(String lastAssignedDriverPhone) { this.lastAssignedDriverPhone = lastAssignedDriverPhone; }
+
+    public String getLastAssignedCabLicensePlate() { return lastAssignedCabLicensePlate; }
+    public void setLastAssignedCabLicensePlate(String lastAssignedCabLicensePlate) { this.lastAssignedCabLicensePlate = lastAssignedCabLicensePlate; }
+
     public String getDropoffOtp() { return dropoffOtp; }
     public void setDropoffOtp(String dropoffOtp) { this.dropoffOtp = dropoffOtp; }
 
@@ -109,6 +136,9 @@ public class RideRequest {
 
     public Instant getRequestedAt() { return requestedAt; }
     public void setRequestedAt(Instant requestedAt) { this.requestedAt = requestedAt; }
+
+    public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 
     public Instant getAssignedAt() { return assignedAt; }
     public void setAssignedAt(Instant assignedAt) { this.assignedAt = assignedAt; }

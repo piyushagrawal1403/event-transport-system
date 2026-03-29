@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, CheckCircle2, ChevronUp, Navigation, Flag } from 'lucide-react';
-import { createRide, getLocations, getGuestRides, cancelRide, getConfig, type Location, type RideRequest, type RideRequestPayload } from '../../api/client';
+import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, CheckCircle2, ChevronUp, Navigation, Flag, MessageSquare, X } from 'lucide-react';
+import { createRide, getLocations, getGuestRides, cancelRide, getConfig, createComplaint, type Location, type RideRequest, type RideRequestPayload } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
 import { pushNotificationService } from '../../services/PushNotificationService';
@@ -48,6 +48,11 @@ export default function GuestHome() {
   const [, setLoadingRides] = useState(true);
   const [adminPhone, setAdminPhone] = useState('');
   const [adminName, setAdminName] = useState('');
+  const [complaintMessage, setComplaintMessage] = useState('');
+  const [complaintRideId, setComplaintRideId] = useState<string>('');
+  const [submittingComplaint, setSubmittingComplaint] = useState(false);
+  const [complaintSuccess, setComplaintSuccess] = useState('');
+  const [showComplaintModal, setShowComplaintModal] = useState(false);
 
   useEffect(() => {
     if (!guestName || !guestPhone) {
@@ -154,6 +159,30 @@ export default function GuestHome() {
     navigate('/');
   };
 
+  const handleSubmitComplaint = async () => {
+    if (!complaintMessage.trim()) return false;
+    setSubmittingComplaint(true);
+    setComplaintSuccess('');
+    try {
+      await createComplaint({
+        guestName,
+        guestPhone,
+        message: complaintMessage.trim(),
+        rideRequestId: complaintRideId ? Number(complaintRideId) : undefined,
+      });
+      setComplaintMessage('');
+      setComplaintRideId('');
+      setComplaintSuccess('Complaint submitted. Admin will review it.');
+      window.setTimeout(() => setComplaintSuccess(''), 4000);
+      return true;
+    } catch {
+      alert('Failed to submit complaint. Please try again.');
+      return false;
+    } finally {
+      setSubmittingComplaint(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <NotificationBanner />
@@ -164,9 +193,18 @@ export default function GuestHome() {
             <h1 className="text-lg font-bold">Event Transport</h1>
             <p className="text-blue-200 text-sm">Hi, {guestName}</p>
           </div>
-          <button onClick={handleLogout} className="p-2 hover:bg-blue-700 rounded-lg transition">
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowComplaintModal(true)}
+              className="p-2 hover:bg-blue-700 rounded-lg transition"
+              title="File complaint"
+            >
+              <MessageSquare className="w-5 h-5" />
+            </button>
+            <button onClick={handleLogout} className="p-2 hover:bg-blue-700 rounded-lg transition">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -376,6 +414,61 @@ export default function GuestHome() {
           </div>
         )}
       </div>
+
+      {showComplaintModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-start justify-center">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl mt-20 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">File a Complaint</h2>
+                <p className="text-xs text-gray-500">Tell the admin what went wrong.</p>
+              </div>
+              <button
+                onClick={() => setShowComplaintModal(false)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition"
+                title="Close"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <textarea
+                value={complaintMessage}
+                onChange={(e) => setComplaintMessage(e.target.value)}
+                rows={4}
+                placeholder="Describe your issue..."
+                className="w-full py-2 px-3 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+              />
+              <select
+                value={complaintRideId}
+                onChange={(e) => setComplaintRideId(e.target.value)}
+                className="w-full py-2 px-3 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+              >
+                <option value="">Related ride (optional)</option>
+                {activeRides.map((ride) => (
+                  <option key={ride.id} value={ride.id}>
+                    Ride #{ride.id} - {ride.location.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={async () => {
+                  const success = await handleSubmitComplaint();
+                  if (success) {
+                    setShowComplaintModal(false);
+                  }
+                }}
+                disabled={submittingComplaint || !complaintMessage.trim()}
+                className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition"
+              >
+                {submittingComplaint ? 'Submitting...' : 'Submit Complaint'}
+              </button>
+              {complaintSuccess && <p className="text-xs text-green-600">{complaintSuccess}</p>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

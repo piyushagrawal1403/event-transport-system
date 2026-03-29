@@ -225,6 +225,16 @@ export const getEvents = () =>
 export const getEventById = (id: string) =>
     api.get<EventItinerary>(`/api/v1/events/${id}`);
 
+export const uploadEventImage = (file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post<{ imageUrl: string }>('/api/v1/events/images', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+};
+
 export const createEvent = (payload: {
   title: string;
   description: string | null;

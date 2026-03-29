@@ -7,7 +7,7 @@ import {
 import {
   getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
   getConfig, updateConfig, getCancelledRides, getCabAnalytics,
-  getComplaints, closeComplaint, createEvent, updateEvent,
+  getComplaints, closeComplaint, createEvent, updateEvent, uploadEventImage,
   type RideRequest, type Cab, type EventItinerary, type Location, type DriverAnalytics,
   type Complaint, type CancelledQueueEntry
 } from '../../api/client';
@@ -54,6 +54,9 @@ export default function Dashboard() {
   const [showCancelledQueue, setShowCancelledQueue] = useState(false);
   const [showComplaints, setShowComplaints] = useState(false);
   const [showEventForm, setShowEventForm] = useState(false);
+  const [eventImageFile, setEventImageFile] = useState<File | null>(null);
+  const [uploadingEventImage, setUploadingEventImage] = useState(false);
+  const [eventImageError, setEventImageError] = useState('');
   const [selectedCancelledDate, setSelectedCancelledDate] = useState(() => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
@@ -877,6 +880,8 @@ export default function Dashboard() {
                     <button
                         onClick={() => {
                           setShowEventForm(true); setEditingEventId(null);
+                          setEventImageFile(null);
+                          setEventImageError('');
                           setEventForm({ title: '', description: '', imageUrl: '', startTime: '', endTime: '', locationId: locations[0]?.id?.toString() || '', notifyGuests: false });
                         }}
                         className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition"
@@ -897,6 +902,8 @@ export default function Dashboard() {
                             <button
                                 onClick={() => {
                                   setEditingEventId(ev.id);
+                                  setEventImageFile(null);
+                                  setEventImageError('');
                                   setEventForm({ title: ev.title, description: ev.description || '', imageUrl: ev.imageUrl || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString(), notifyGuests: false });
                                   setShowEventForm(true);
                                 }}
@@ -920,7 +927,11 @@ export default function Dashboard() {
             <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
               <h3 className="font-semibold">{editingEventId ? 'Edit Event' : 'Add Event'}</h3>
               <button
-                onClick={() => setShowEventForm(false)}
+                onClick={() => {
+                  setShowEventForm(false);
+                  setEventImageFile(null);
+                  setEventImageError('');
+                }}
                 className="p-1.5 rounded hover:bg-gray-700 transition"
               >
                 <X className="w-4 h-4 text-gray-300" />
@@ -940,12 +951,45 @@ export default function Dashboard() {
                 rows={4}
                 className="w-full py-2 px-3 bg-gray-700 rounded text-sm text-white placeholder-gray-400 outline-none"
               />
-              <input
-                value={eventForm.imageUrl}
-                onChange={e => setEventForm(f => ({ ...f, imageUrl: e.target.value }))}
-                placeholder="Image URL (optional)"
-                className="w-full py-2 px-3 bg-gray-700 rounded text-sm text-white placeholder-gray-400 outline-none"
-              />
+              <div className="rounded-lg border border-gray-600 p-3 space-y-2">
+                <p className="text-xs text-gray-400">Event image</p>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(e) => {
+                    setEventImageFile(e.target.files?.[0] || null);
+                    setEventImageError('');
+                  }}
+                  className="w-full text-xs text-gray-300 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white hover:file:bg-blue-500"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!eventImageFile) return;
+                      setUploadingEventImage(true);
+                      setEventImageError('');
+                      try {
+                        const res = await uploadEventImage(eventImageFile);
+                        setEventForm((f) => ({ ...f, imageUrl: res.data.imageUrl }));
+                      } catch {
+                        setEventImageError('Failed to upload image. Please try again.');
+                      } finally {
+                        setUploadingEventImage(false);
+                      }
+                    }}
+                    disabled={!eventImageFile || uploadingEventImage}
+                    className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                  >
+                    {uploadingEventImage ? 'Uploading...' : 'Upload Image'}
+                  </button>
+                  {eventForm.imageUrl && <span className="text-xs text-green-400">Uploaded</span>}
+                </div>
+                {eventImageError && <p className="text-xs text-red-400">{eventImageError}</p>}
+                {eventForm.imageUrl && (
+                  <img src={eventForm.imageUrl} alt="Event preview" className="h-24 w-full object-cover rounded-md border border-gray-600" />
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-gray-400">Start date</label>
@@ -992,6 +1036,8 @@ export default function Dashboard() {
                         await createEvent(payload);
                       }
                       setShowEventForm(false);
+                      setEventImageFile(null);
+                      setEventImageError('');
                       await fetchEvents();
                     } catch {
                       alert('Failed to save event');
@@ -1001,7 +1047,16 @@ export default function Dashboard() {
                 >
                   Save
                 </button>
-                <button onClick={() => setShowEventForm(false)} className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm font-medium transition">Cancel</button>
+                <button
+                  onClick={() => {
+                    setShowEventForm(false);
+                    setEventImageFile(null);
+                    setEventImageError('');
+                  }}
+                  className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm font-medium transition"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>

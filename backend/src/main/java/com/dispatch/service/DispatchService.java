@@ -85,6 +85,21 @@ public class DispatchService {
                 String.format("You have been assigned %d ride(s) for pickup. Please check your dashboard.", rides.size()));
         }
 
+        // Notify each guest whose ride was assigned
+        Set<String> guestPhones = new HashSet<>();
+        for (RideRequest ride : rides) {
+            if (ride.getGuestPhone() != null) {
+                guestPhones.add(sanitizePhone(ride.getGuestPhone()));
+            }
+        }
+        for (String guestPhone : guestPhones) {
+            pushNotificationService.sendPushToGuest(
+                    guestPhone,
+                    "Cab Assigned",
+                    String.format("Your ride is assigned: %s (%s).", cab.getDriverName(), cab.getLicensePlate())
+            );
+        }
+
         Map<String, String> result = new HashMap<>();
         result.put("magicLinkId", magicLinkId);
         result.put("otp", otp);
@@ -116,7 +131,18 @@ public class DispatchService {
             r.setStatus(RideStatus.ACCEPTED);
             r.setAcceptedAt(now);
         }
-        return rideRequestRepository.saveAll(batch);
+        List<RideRequest> saved = rideRequestRepository.saveAll(batch);
+
+        Cab cab = ride.getCab();
+        String driverName = cab != null ? cab.getDriverName() : "Your driver";
+        String cabPlate = cab != null ? cab.getLicensePlate() : "assigned cab";
+        notifyGuestsInBatch(
+                saved,
+                "Driver Accepted",
+                String.format("%s (%s) accepted your ride and is on the way.", driverName, cabPlate)
+        );
+
+        return saved;
     }
 
     /**
@@ -137,6 +163,7 @@ public class DispatchService {
         String cabPlate = cab != null ? cab.getLicensePlate() : "unknown cab";
         if (cab != null) {
             cab.setStatus(CabStatus.AVAILABLE);
+            cab.setTripsDenied((cab.getTripsDenied() == null ? 0 : cab.getTripsDenied()) + 1);
             cabRepository.save(cab);
         }
 
@@ -157,6 +184,27 @@ public class DispatchService {
         pushNotificationService.sendPushToAdmins("Driver Denied Ride", message);
 
         return savedBatch;
+    }
+
+    private String sanitizePhone(String phone) {
+        if (phone == null) return null;
+        String digits = phone.replaceAll("[^\\d]", "");
+        if (digits.startsWith("91") && digits.length() == 12) {
+            digits = digits.substring(2);
+        }
+        return digits;
+    }
+
+    private void notifyGuestsInBatch(List<RideRequest> rides, String title, String body) {
+        Set<String> guestPhones = new HashSet<>();
+        for (RideRequest ride : rides) {
+            if (ride.getGuestPhone() != null) {
+                guestPhones.add(sanitizePhone(ride.getGuestPhone()));
+            }
+        }
+        for (String guestPhone : guestPhones) {
+            pushNotificationService.sendPushToGuest(guestPhone, title, body);
+        }
     }
 
     // ── Trip Start (OTP gate) ─────────────────────────────────────────────────
@@ -260,7 +308,13 @@ public class DispatchService {
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.ARRIVED);
         }
-        rideRequestRepository.saveAll(batch);
+        List<RideRequest> saved = rideRequestRepository.saveAll(batch);
+
+        notifyGuestsInBatch(
+                saved,
+                "Driver Arrived",
+                "Your driver has arrived at pickup. Please share your OTP to start the trip."
+        );
     }
 
     // ── Ride Cancellation with Notification ──────────────────────────────────

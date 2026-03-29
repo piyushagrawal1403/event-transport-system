@@ -132,6 +132,20 @@ public class PushNotificationService {
         sendPushToSubscriptions(pushSubscriptionRepository.findByUserType("GUEST"), title, body, "guests");
     }
 
+    public void sendPushToGuest(String guestPhone, String title, String body) {
+        String normalizedPhone = normalizeUserPhone(guestPhone, "GUEST");
+        List<PushSubscription> subscriptions = pushSubscriptionRepository.findByUserTypeAndUserPhone("GUEST", normalizedPhone);
+
+        if (subscriptions.isEmpty()) {
+            subscriptions = pushSubscriptionRepository.findByUserPhone(normalizedPhone);
+            if (!subscriptions.isEmpty()) {
+                logger.warn("Guest push lookup used fallback for {} (legacy subscription rows detected)", normalizedPhone);
+            }
+        }
+
+        sendPushToSubscriptions(subscriptions, title, body, "guest " + normalizedPhone);
+    }
+
     private void sendPushToSubscriptions(List<PushSubscription> subscriptions, String title, String body, String audience) {
         if (subscriptions == null || subscriptions.isEmpty()) {
             logger.info("No push subscriptions found for {}", audience);

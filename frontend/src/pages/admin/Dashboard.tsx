@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Car, Users, Clock, MapPin, CheckCircle2, AlertTriangle,
   RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award, Flag, Bell, BellRing,
-  Settings, Save, Phone, User
+  Settings, Save, Phone, User, X
 } from 'lucide-react';
 import {
   getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
@@ -134,28 +134,53 @@ export default function Dashboard() {
     getConfig().then(r => setSettingsForm({ adminName: r.data.adminName, adminPhone: r.data.adminPhone })).catch(() => {});
   }, []);
 
-  // Initialize push notifications for admin
+  const ensureAdminPushSubscription = useCallback(async () => {
+    await pushNotificationService.initialize();
+
+    if (typeof Notification === 'undefined') {
+      setAdminPushPermission('unsupported');
+      setAdminPushEnabled(false);
+      return;
+    }
+
+    let permission = Notification.permission;
+    setAdminPushPermission(permission);
+
+    if (permission === 'granted') {
+      const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+        permissionAlreadyGranted: true,
+      });
+      setAdminPushEnabled(subscribed);
+    } else {
+      setAdminPushEnabled(false);
+    }
+  }, []);
+
+  // Keep admin notifications auto-on by re-checking subscription state
   useEffect(() => {
-    const initializeAdminPush = async () => {      await pushNotificationService.initialize();
+    ensureAdminPushSubscription();
 
-      if (typeof Notification === 'undefined') {
-        setAdminPushPermission('unsupported');
-        setAdminPushEnabled(false);
-        return;
-      }
-
-      setAdminPushPermission(Notification.permission);
-
-      if (Notification.permission === 'granted') {
-        const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
-          permissionAlreadyGranted: true,
-        });
-        setAdminPushEnabled(subscribed);
+    const onFocus = () => { ensureAdminPushSubscription(); };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        ensureAdminPushSubscription();
       }
     };
 
-    initializeAdminPush();
-  }, []);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    const interval = window.setInterval(() => {
+      if (!adminPushEnabled) {
+        ensureAdminPushSubscription();
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(interval);
+    };
+  }, [adminPushEnabled, ensureAdminPushSubscription]);
 
   const handleEnableAdminNotifications = async () => {
     setEnablingAdminPush(true);
@@ -249,7 +274,6 @@ export default function Dashboard() {
   };
 
   const availableCabs = cabs.filter(c => c.status === 'AVAILABLE');
-  const deniedRideCount = groups.reduce((sum, group) => sum + group.rides.filter(ride => (ride.driverDeniedCount ?? 0) > 0).length, 0);
   const selectedPaxCount = Array.from(selectedRides.values()).reduce((sum, pax) => sum + pax, 0);
   const selectedCab = cabs.find(c => c.id === selectedCabId);
   const isOverCapacity = selectedCab ? selectedPaxCount > selectedCab.capacity : false;
@@ -301,13 +325,12 @@ export default function Dashboard() {
                 <button
                   onClick={handleEnableAdminNotifications}
                   disabled={enablingAdminPush}
-                  title={enablingAdminPush ? 'Enabling…' : 'Enable notifications'}
+                  title={enablingAdminPush ? 'Enabling...' : 'Enable notifications'}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2 py-2 sm:px-3 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {adminPushEnabled ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                  {/* Show text only on sm+ */}
+                  <Bell className="w-4 h-4" />
                   <span className="hidden sm:inline">
-                    {enablingAdminPush ? 'Enabling…' : 'Enable alerts'}
+                    {enablingAdminPush ? 'Enabling...' : 'Enable alerts'}
                   </span>
                 </button>
               )}
@@ -319,6 +342,13 @@ export default function Dashboard() {
               <span className="hidden sm:inline text-xs text-gray-500">Updated {lastRefresh.toLocaleTimeString()}</span>
               <button onClick={fetchData} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition" title="Refresh">
                 <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                title="Settings"
+              >
+                <Settings className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -432,11 +462,6 @@ export default function Dashboard() {
               <span className="text-sm font-normal text-gray-400">
               ({groups.reduce((sum, g) => sum + g.rides.length, 0)})
             </span>
-              {deniedRideCount > 0 && (
-                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-900/50 text-red-300 border border-red-700">
-                  {deniedRideCount} denied by driver
-                </span>
-              )}
             </h2>
 
             {groups.length === 0 && (
@@ -498,11 +523,6 @@ export default function Dashboard() {
                               <div className="flex items-center gap-2">
                                 <span className="font-medium truncate">{ride.guestName}</span>
                                 <span className="text-gray-400 text-sm">{ride.guestPhone}</span>
-                                {(ride.driverDeniedCount ?? 0) > 0 && (
-                                  <span className="px-2 py-0.5 rounded-full bg-red-900/40 text-red-300 text-xs font-medium border border-red-700/50">
-                                    Denied ×{ride.driverDeniedCount ?? 0}
-                                  </span>
-                                )}
                               </div>
                               <div className="flex items-center gap-3 text-sm text-gray-400">
                                 <span>{ride.passengerCount} pax</span>
@@ -634,6 +654,10 @@ export default function Dashboard() {
                         <Award className="w-3 h-3" />
                               {cab.tripsCompleted}
                       </span>
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-900/40 text-red-300 text-xs font-medium">
+                        <AlertTriangle className="w-3 h-3" />
+                              {cab.tripsDenied ?? 0}
+                      </span>
                           </div>
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                               cab.status === 'AVAILABLE' ? 'bg-green-800 text-green-200' :
@@ -748,63 +772,67 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* ── Settings ─────────────────────────────────────────────── */}
-            <div className="bg-gray-800 rounded-xl border border-gray-700">
-              <button
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-750 transition rounded-xl"
-              >
-                <h3 className="font-semibold flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-gray-400" />
-                  Settings
-                </h3>
-                {showSettings ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-              </button>
-
-              {showSettings && (
-                  <div className="px-4 pb-4 space-y-3">
-                    <p className="text-xs text-gray-500">Admin contact shown to guests and drivers.</p>
-
-                    <div>
-                      <label className="flex items-center gap-1 text-xs text-gray-400 mb-1">
-                        <User className="w-3 h-3" /> Admin Name
-                      </label>
-                      <input
-                          type="text"
-                          value={settingsForm.adminName}
-                          onChange={e => setSettingsForm(f => ({ ...f, adminName: e.target.value }))}
-                          placeholder="e.g. Ravi Kumar"
-                          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="flex items-center gap-1 text-xs text-gray-400 mb-1">
-                        <Phone className="w-3 h-3" /> Admin Phone
-                      </label>
-                      <input
-                          type="tel"
-                          value={settingsForm.adminPhone}
-                          onChange={e => setSettingsForm(f => ({ ...f, adminPhone: e.target.value }))}
-                          placeholder="e.g. +91-9900000000"
-                          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      />
-                    </div>
-
-                    <button
-                        onClick={handleSaveSettings}
-                        disabled={savingSettings || !settingsForm.adminName.trim() || !settingsForm.adminPhone.trim()}
-                        className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Save className="w-4 h-4" />
-                      {savingSettings ? 'Saving…' : settingsSaved ? '✓ Saved!' : 'Save Settings'}
-                    </button>
-                  </div>
-              )}
-            </div>
-
           </div>
         </div>
+
+      {showSettings && (
+        <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center">
+          <div className="w-full max-w-md bg-gray-800 border border-gray-700 rounded-xl shadow-2xl">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Settings className="w-4 h-4 text-gray-300" />
+                Settings
+              </h3>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="p-1.5 rounded hover:bg-gray-700 transition"
+                title="Close settings"
+              >
+                <X className="w-4 h-4 text-gray-300" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-500">Admin contact shown to guests and drivers.</p>
+
+              <div>
+                <label className="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                  <User className="w-3 h-3" /> Admin Name
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.adminName}
+                  onChange={e => setSettingsForm(f => ({ ...f, adminName: e.target.value }))}
+                  placeholder="e.g. Ravi Kumar"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                  <Phone className="w-3 h-3" /> Admin Phone
+                </label>
+                <input
+                  type="tel"
+                  value={settingsForm.adminPhone}
+                  onChange={e => setSettingsForm(f => ({ ...f, adminPhone: e.target.value }))}
+                  placeholder="e.g. +91-9900000000"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveSettings}
+                disabled={savingSettings || !settingsForm.adminName.trim() || !settingsForm.adminPhone.trim()}
+                className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                {savingSettings ? 'Saving…' : settingsSaved ? '✓ Saved!' : 'Save Settings'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
   );
 }

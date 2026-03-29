@@ -55,6 +55,7 @@ export interface Cab {
   capacity: number;
   status: 'AVAILABLE' | 'BUSY' | 'OFFLINE';
   tripsCompleted: number;
+  tripsDenied: number;
 }
 
 export interface Location {

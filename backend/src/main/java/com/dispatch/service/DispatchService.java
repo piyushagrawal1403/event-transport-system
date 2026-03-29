@@ -3,6 +3,7 @@ package com.dispatch.service;
 import com.dispatch.dto.AssignRequestDto;
 import com.dispatch.model.*;
 import com.dispatch.repository.CabRepository;
+import com.dispatch.repository.EventNotificationRepository;
 import com.dispatch.repository.RideRequestRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,10 +16,16 @@ public class DispatchService {
 
     private final CabRepository cabRepository;
     private final RideRequestRepository rideRequestRepository;
+    private final EventNotificationRepository eventNotificationRepository;
+    private final PushNotificationService pushNotificationService;
 
-    public DispatchService(CabRepository cabRepository, RideRequestRepository rideRequestRepository) {
+    public DispatchService(CabRepository cabRepository, RideRequestRepository rideRequestRepository,
+                          EventNotificationRepository eventNotificationRepository,
+                          PushNotificationService pushNotificationService) {
         this.cabRepository = cabRepository;
         this.rideRequestRepository = rideRequestRepository;
+        this.eventNotificationRepository = eventNotificationRepository;
+        this.pushNotificationService = pushNotificationService;
     }
 
     // ── Assign (Admin → Driver) ───────────────────────────────────────────────
@@ -72,6 +79,27 @@ public class DispatchService {
         }
         rideRequestRepository.saveAll(rides);
 
+        // Send push notification to driver
+        if (cab.getDriverPhone() != null) {
+            pushNotificationService.sendPushToDriver(cab.getDriverPhone(), "New Ride Assignment", 
+                String.format("You have been assigned %d ride(s) for pickup. Please check your dashboard.", rides.size()));
+        }
+
+        // Notify each guest whose ride was assigned
+        Set<String> guestPhones = new HashSet<>();
+        for (RideRequest ride : rides) {
+            if (ride.getGuestPhone() != null) {
+                guestPhones.add(sanitizePhone(ride.getGuestPhone()));
+            }
+        }
+        for (String guestPhone : guestPhones) {
+            pushNotificationService.sendPushToGuest(
+                    guestPhone,
+                    "Cab Assigned",
+                    String.format("Your ride is assigned: %s (%s).", cab.getDriverName(), cab.getLicensePlate())
+            );
+        }
+
         Map<String, String> result = new HashMap<>();
         result.put("magicLinkId", magicLinkId);
         result.put("otp", otp);
@@ -103,7 +131,18 @@ public class DispatchService {
             r.setStatus(RideStatus.ACCEPTED);
             r.setAcceptedAt(now);
         }
-        return rideRequestRepository.saveAll(batch);
+        List<RideRequest> saved = rideRequestRepository.saveAll(batch);
+
+        Cab cab = ride.getCab();
+        String driverName = cab != null ? cab.getDriverName() : "Your driver";
+        String cabPlate = cab != null ? cab.getLicensePlate() : "assigned cab";
+        notifyGuestsInBatch(
+                saved,
+                "Driver Accepted",
+                String.format("%s (%s) accepted your ride and is on the way.", driverName, cabPlate)
+        );
+
+        return saved;
     }
 
     /**
@@ -120,20 +159,52 @@ public class DispatchService {
         }
 
         Cab cab = ride.getCab();
+        String driverName = cab != null ? cab.getDriverName() : "Driver";
+        String cabPlate = cab != null ? cab.getLicensePlate() : "unknown cab";
         if (cab != null) {
             cab.setStatus(CabStatus.AVAILABLE);
+            cab.setTripsDenied((cab.getTripsDenied() == null ? 0 : cab.getTripsDenied()) + 1);
             cabRepository.save(cab);
         }
 
         List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.PENDING);
+            r.setDriverDeniedCount((r.getDriverDeniedCount() == null ? 0 : r.getDriverDeniedCount()) + 1);
             r.setCab(null);
             r.setDropoffOtp(null);
             r.setMagicLinkId(null);
             r.setAssignedAt(null);
+            r.setAcceptedAt(null);
         }
-        return rideRequestRepository.saveAll(batch);
+        List<RideRequest> savedBatch = rideRequestRepository.saveAll(batch);
+
+        String message = String.format("%s denied %d ride(s) on %s. Reassignment needed.", driverName, savedBatch.size(), cabPlate);
+        eventNotificationRepository.save(new EventNotification(message));
+        pushNotificationService.sendPushToAdmins("Driver Denied Ride", message);
+
+        return savedBatch;
+    }
+
+    private String sanitizePhone(String phone) {
+        if (phone == null) return null;
+        String digits = phone.replaceAll("[^\\d]", "");
+        if (digits.startsWith("91") && digits.length() == 12) {
+            digits = digits.substring(2);
+        }
+        return digits;
+    }
+
+    private void notifyGuestsInBatch(List<RideRequest> rides, String title, String body) {
+        Set<String> guestPhones = new HashSet<>();
+        for (RideRequest ride : rides) {
+            if (ride.getGuestPhone() != null) {
+                guestPhones.add(sanitizePhone(ride.getGuestPhone()));
+            }
+        }
+        for (String guestPhone : guestPhones) {
+            pushNotificationService.sendPushToGuest(guestPhone, title, body);
+        }
     }
 
     // ── Trip Start (OTP gate) ─────────────────────────────────────────────────
@@ -237,6 +308,55 @@ public class DispatchService {
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.ARRIVED);
         }
+        List<RideRequest> saved = rideRequestRepository.saveAll(batch);
+
+        notifyGuestsInBatch(
+                saved,
+                "Driver Arrived",
+                "Your driver has arrived at pickup. Please share your OTP to start the trip."
+        );
+    }
+
+    // ── Ride Cancellation with Notification ──────────────────────────────────
+
+    /**
+     * Cancel an accepted ride and notify the driver.
+     * Reverts all rides in the batch to PENDING and frees the cab.
+     */
+    @Transactional
+    public void cancelAcceptedRide(Long rideId) {
+        RideRequest ride = rideRequestRepository.findById(rideId)
+                .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
+
+        if (ride.getStatus() != RideStatus.ACCEPTED && ride.getStatus() != RideStatus.ARRIVED) {
+            throw new IllegalStateException("Can only cancel ACCEPTED or ARRIVED rides");
+        }
+
+        String driverPhone = ride.getCab() != null ? ride.getCab().getDriverPhone() : null;
+
+        Cab cab = ride.getCab();
+        if (cab != null) {
+            cab.setStatus(CabStatus.AVAILABLE);
+            cabRepository.save(cab);
+        }
+
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+        for (RideRequest r : batch) {
+            r.setStatus(RideStatus.CANCELLED);
+            r.setMagicLinkId(null);
+            r.setAssignedAt(null);
+        }
         rideRequestRepository.saveAll(batch);
+
+        // Send targeted notification to driver
+        if (driverPhone != null) {
+            String message = String.format("Your accepted ride #%d has been cancelled by admin", rideId);
+            EventNotification notification = new EventNotification(message, driverPhone);
+            eventNotificationRepository.save(notification);
+
+            // Send push notification
+            pushNotificationService.sendPushToDriver(driverPhone, "Ride Cancelled", 
+                String.format("Ride #%d has been cancelled. You are now available for new assignments", rideId));
+        }
     }
 }

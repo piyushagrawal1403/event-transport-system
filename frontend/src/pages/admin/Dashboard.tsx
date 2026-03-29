@@ -1,22 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Car, Users, Clock, MapPin, CheckCircle2, AlertTriangle,
-  RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award, Flag
+  RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award, Flag, Bell, BellRing,
+  Settings, Save, Phone, User, X
 } from 'lucide-react';
 import {
   getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
+  getConfig, updateConfig,
   type RideRequest, type Cab, type EventItinerary, type Location
 } from '../../api/client';
 import api from '../../api/client';
+import { pushNotificationService } from '../../services/PushNotificationService';
 
 interface LocationGroup {
   locationId: number;
   locationName: string;
-  rides: RideRequest[];
+  rides: DashboardRideRequest[];
   totalPax: number;
   hasTimedOut: boolean;
   isFull: boolean;
 }
+
+type DashboardRideRequest = RideRequest & { driverDeniedCount?: number };
 
 // Badge colours for every possible ride status
 const STATUS_BADGE: Record<string, string> = {
@@ -46,6 +51,15 @@ export default function Dashboard() {
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventForm, setEventForm] = useState({ title: '', description: '', startTime: '', endTime: '', locationId: '', notifyGuests: false });
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [adminPushPermission, setAdminPushPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
+  const [adminPushEnabled, setAdminPushEnabled] = useState(false);
+  const [enablingAdminPush, setEnablingAdminPush] = useState(false);
+
+  // Settings panel
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({ adminName: '', adminPhone: '' });
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   const DEFAULT_CAB_CAPACITY = 4;
 
@@ -103,7 +117,9 @@ export default function Dashboard() {
       const [evRes, locRes] = await Promise.allSettled([getEvents(), getLocations()]);
       if (evRes.status === 'fulfilled') setEvents(evRes.value.data);
       if (locRes.status === 'fulfilled') setLocations(locRes.value.data);
-    } catch {}
+    } catch {
+      // Retry on next refresh
+    }
   }, []);
 
   useEffect(() => {
@@ -112,6 +128,83 @@ export default function Dashboard() {
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, [fetchData, fetchEvents]);
+
+  // Load admin settings into the settings form
+  useEffect(() => {
+    getConfig().then(r => setSettingsForm({ adminName: r.data.adminName, adminPhone: r.data.adminPhone })).catch(() => {});
+  }, []);
+
+  const ensureAdminPushSubscription = useCallback(async () => {
+    await pushNotificationService.initialize();
+
+    if (typeof Notification === 'undefined') {
+      setAdminPushPermission('unsupported');
+      setAdminPushEnabled(false);
+      return;
+    }
+
+    let permission = Notification.permission;
+    setAdminPushPermission(permission);
+
+    if (permission === 'granted') {
+      const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+        permissionAlreadyGranted: true,
+      });
+      setAdminPushEnabled(subscribed);
+    } else {
+      setAdminPushEnabled(false);
+    }
+  }, []);
+
+  // Keep admin notifications auto-on by re-checking subscription state
+  useEffect(() => {
+    ensureAdminPushSubscription();
+
+    const onFocus = () => { ensureAdminPushSubscription(); };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        ensureAdminPushSubscription();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    const interval = window.setInterval(() => {
+      if (!adminPushEnabled) {
+        ensureAdminPushSubscription();
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(interval);
+    };
+  }, [adminPushEnabled, ensureAdminPushSubscription]);
+
+  const handleEnableAdminNotifications = async () => {
+    setEnablingAdminPush(true);
+    try {
+      await pushNotificationService.initialize();
+      const granted = await pushNotificationService.requestPermission();
+      setAdminPushPermission(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+
+      if (!granted) {
+        setAdminPushEnabled(false);
+        return;
+      }
+
+      const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+        permissionAlreadyGranted: true,
+      });
+      setAdminPushEnabled(subscribed);
+    } catch (error) {
+      console.error('Failed to enable admin push notifications:', error);
+      setAdminPushEnabled(false);
+    } finally {
+      setEnablingAdminPush(false);
+    }
+  };
 
   const toggleRide = (rideId: number, paxCount: number) => {
     setSelectedRides(prev => {
@@ -151,6 +244,35 @@ export default function Dashboard() {
     }
   };
 
+  const handleSaveSettings = async () => {
+    if (!settingsForm.adminName.trim() || !settingsForm.adminPhone.trim()) return;
+    setSavingSettings(true);
+    try {
+      await updateConfig({ adminName: settingsForm.adminName.trim(), adminPhone: settingsForm.adminPhone.trim() });
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch {
+      alert('Failed to save settings. Please try again.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const getDatePart = (value: string) => (value ? value.slice(0, 10) : '');
+  const getTimePart = (value: string) => (value ? value.slice(11, 16) : '');
+
+  const updateEventDateTime = (field: 'startTime' | 'endTime', part: 'date' | 'time', value: string) => {
+    setEventForm((current) => {
+      const existing = current[field];
+      const date = part === 'date' ? value : (getDatePart(existing) || new Date().toISOString().slice(0, 10));
+      const time = part === 'time' ? value : (getTimePart(existing) || (field === 'startTime' ? '09:00' : '10:00'));
+      return {
+        ...current,
+        [field]: date && time ? `${date}T${time}` : existing,
+      };
+    });
+  };
+
   const availableCabs = cabs.filter(c => c.status === 'AVAILABLE');
   const selectedPaxCount = Array.from(selectedRides.values()).reduce((sum, pax) => sum + pax, 0);
   const selectedCab = cabs.find(c => c.id === selectedCabId);
@@ -181,10 +303,52 @@ export default function Dashboard() {
                 {groups.reduce((sum, g) => sum + g.rides.length, 0)} pending · {availableCabs.length} cabs free
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500">Updated {lastRefresh.toLocaleTimeString()}</span>
-              <button onClick={fetchData} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition">
+            <div className="flex items-center gap-2">
+              {/* Notification status badge — hidden on xs */}
+              <span className={`hidden md:inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                adminPushEnabled
+                  ? 'bg-green-900 text-green-200'
+                  : adminPushPermission === 'denied'
+                    ? 'bg-red-900 text-red-200'
+                    : 'bg-yellow-900 text-yellow-200'
+              }`}>
+                {adminPushEnabled ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+                {adminPushEnabled
+                  ? 'Notifications on'
+                  : adminPushPermission === 'denied'
+                    ? 'Blocked'
+                    : adminPushPermission === 'unsupported'
+                      ? 'Unsupported'
+                      : 'Off'}
+              </span>
+              {!adminPushEnabled && adminPushPermission !== 'unsupported' && (
+                <button
+                  onClick={handleEnableAdminNotifications}
+                  disabled={enablingAdminPush}
+                  title={enablingAdminPush ? 'Enabling...' : 'Enable notifications'}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2 py-2 sm:px-3 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Bell className="w-4 h-4" />
+                  <span className="hidden sm:inline">
+                    {enablingAdminPush ? 'Enabling...' : 'Enable alerts'}
+                  </span>
+                </button>
+              )}
+              {adminPushEnabled && (
+                <span className="inline-flex items-center sm:hidden">
+                  <BellRing className="w-4 h-4 text-green-400" />
+                </span>
+              )}
+              <span className="hidden sm:inline text-xs text-gray-500">Updated {lastRefresh.toLocaleTimeString()}</span>
+              <button onClick={fetchData} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition" title="Refresh">
                 <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                title="Settings"
+              >
+                <Settings className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -246,6 +410,24 @@ export default function Dashboard() {
                           {first.status.replace('_', ' ')}
                         </span>
                               {first.assignedAt && <TransitTimer assignedAt={first.assignedAt} />}
+                              {/* Cancel batch — only allowed before IN_TRANSIT */}
+                              {first.status !== 'IN_TRANSIT' && first.status !== 'COMPLETED' && first.status !== 'CANCELLED' && (
+                                <button
+                                  onClick={async () => {
+                                    const names = rides.map(r => r.guestName).join(', ');
+                                    if (!confirm(`Cancel trip for: ${names}?\nThis will free the cab and notify the driver.`)) return;
+                                    try {
+                                      await Promise.all(rides.map(r => cancelRide(r.id)));
+                                      fetchData();
+                                    } catch {
+                                      alert('Failed to cancel one or more rides.');
+                                    }
+                                  }}
+                                  className="text-xs text-red-400 hover:text-red-300 font-medium border border-red-700/50 rounded px-2 py-0.5"
+                                >
+                                  Cancel Trip
+                                </button>
+                              )}
                             </div>
                           </div>
                           <div className="px-4 pb-3 space-y-1">
@@ -472,6 +654,10 @@ export default function Dashboard() {
                         <Award className="w-3 h-3" />
                               {cab.tripsCompleted}
                       </span>
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-900/40 text-red-300 text-xs font-medium">
+                        <AlertTriangle className="w-3 h-3" />
+                              {cab.tripsDenied ?? 0}
+                      </span>
                           </div>
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                               cab.status === 'AVAILABLE' ? 'bg-green-800 text-green-200' :
@@ -515,12 +701,22 @@ export default function Dashboard() {
                           <input value={eventForm.description} onChange={e => setEventForm(f => ({...f, description: e.target.value}))} placeholder="Description (optional)" className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white placeholder-gray-400 outline-none" />
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="text-xs text-gray-400">Start</label>
-                              <input type="datetime-local" value={eventForm.startTime} onChange={e => setEventForm(f => ({...f, startTime: e.target.value}))} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
+                              <label className="text-xs text-gray-400">Start date</label>
+                              <input type="date" value={getDatePart(eventForm.startTime)} onChange={e => updateEventDateTime('startTime', 'date', e.target.value)} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
                             </div>
                             <div>
-                              <label className="text-xs text-gray-400">End</label>
-                              <input type="datetime-local" value={eventForm.endTime} onChange={e => setEventForm(f => ({...f, endTime: e.target.value}))} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
+                              <label className="text-xs text-gray-400">Start time</label>
+                              <input type="time" value={getTimePart(eventForm.startTime)} onChange={e => updateEventDateTime('startTime', 'time', e.target.value)} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-gray-400">End date</label>
+                              <input type="date" value={getDatePart(eventForm.endTime)} onChange={e => updateEventDateTime('endTime', 'date', e.target.value)} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-400">End time</label>
+                              <input type="time" value={getTimePart(eventForm.endTime)} onChange={e => updateEventDateTime('endTime', 'time', e.target.value)} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
                             </div>
                           </div>
                           <select value={eventForm.locationId} onChange={e => setEventForm(f => ({...f, locationId: e.target.value}))} className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white outline-none">
@@ -528,7 +724,7 @@ export default function Dashboard() {
                           </select>
                           <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                             <input type="checkbox" checked={eventForm.notifyGuests} onChange={e => setEventForm(f => ({...f, notifyGuests: e.target.checked}))} className="rounded bg-gray-600 border-gray-500" />
-                            Notify all guests (in-app)
+                            Notify all guests (push notification)
                           </label>
                           <div className="flex gap-2">
                             <button
@@ -575,8 +771,68 @@ export default function Dashboard() {
                   </div>
               )}
             </div>
+
           </div>
         </div>
+
+      {showSettings && (
+        <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center">
+          <div className="w-full max-w-md bg-gray-800 border border-gray-700 rounded-xl shadow-2xl">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Settings className="w-4 h-4 text-gray-300" />
+                Settings
+              </h3>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="p-1.5 rounded hover:bg-gray-700 transition"
+                title="Close settings"
+              >
+                <X className="w-4 h-4 text-gray-300" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-500">Admin contact shown to guests and drivers.</p>
+
+              <div>
+                <label className="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                  <User className="w-3 h-3" /> Admin Name
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.adminName}
+                  onChange={e => setSettingsForm(f => ({ ...f, adminName: e.target.value }))}
+                  placeholder="e.g. Ravi Kumar"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                  <Phone className="w-3 h-3" /> Admin Phone
+                </label>
+                <input
+                  type="tel"
+                  value={settingsForm.adminPhone}
+                  onChange={e => setSettingsForm(f => ({ ...f, adminPhone: e.target.value }))}
+                  placeholder="e.g. +91-9900000000"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveSettings}
+                disabled={savingSettings || !settingsForm.adminName.trim() || !settingsForm.adminPhone.trim()}
+                className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                {savingSettings ? 'Saving…' : settingsSaved ? '✓ Saved!' : 'Save Settings'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
   );
 }

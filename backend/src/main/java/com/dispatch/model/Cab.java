@@ -29,6 +29,9 @@ public class Cab {
     @Column(nullable = false)
     private Integer tripsCompleted = 0;
 
+    @Column(nullable = false)
+    private Integer tripsDenied = 0;
+
     public Cab() {}
 
     public Cab(String licensePlate, String driverName, String driverPhone, Integer capacity) {
@@ -59,4 +62,7 @@ public class Cab {
 
     public Integer getTripsCompleted() { return tripsCompleted; }
     public void setTripsCompleted(Integer tripsCompleted) { this.tripsCompleted = tripsCompleted; }
+
+    public Integer getTripsDenied() { return tripsDenied; }
+    public void setTripsDenied(Integer tripsDenied) { this.tripsDenied = tripsDenied; }
 }

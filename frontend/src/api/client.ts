@@ -44,6 +44,7 @@ export interface RideRequest {
   requestedAt: string;
   assignedAt: string | null;
   acceptedAt: string | null;
+  driverDeniedCount: number;
 }
 
 export interface Cab {
@@ -54,6 +55,7 @@ export interface Cab {
   capacity: number;
   status: 'AVAILABLE' | 'BUSY' | 'OFFLINE';
   tripsCompleted: number;
+  tripsDenied: number;
 }
 
 export interface Location {
@@ -72,6 +74,14 @@ export interface AppNotification {
 export interface AssignPayload {
   cabId: number;
   rideIds: number[];
+}
+
+export interface PushSubscriptionPayload {
+  endpoint: string;
+  'keys.p256dh': string;
+  'keys.auth': string;
+  userPhone: string;
+  userType: 'ADMIN' | 'DRIVER' | 'GUEST';
 }
 
 // === Ride Endpoints ===
@@ -168,5 +178,20 @@ export const getNotifications = (since?: string) =>
     api.get<AppNotification[]>('/api/v1/notifications', {
       params: since ? { since } : {}
     });
+
+// === Push Notification Endpoints ===
+
+export const subscribeToPush = (subscription: PushSubscriptionPayload) =>
+    api.post('/api/v1/push/subscribe', subscription);
+
+export const getVapidPublicKey = () =>
+    api.get<{ vapidPublicKey: string }>('/api/v1/push/vapid-public-key');
+
+// App config — admin phone + name, editable from the admin dashboard
+export const getConfig = () =>
+    api.get<{ adminPhone: string; adminName: string }>('/api/v1/config');
+
+export const updateConfig = (payload: { adminPhone?: string; adminName?: string }) =>
+    api.put<{ adminPhone: string; adminName: string }>('/api/v1/config', payload);
 
 export default api;

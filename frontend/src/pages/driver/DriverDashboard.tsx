@@ -6,6 +6,7 @@ import {
 import {
   getCabs, getCabActiveRides, getCabCompletedRides, updateCabStatus,
   acceptRide, denyRide, markArrived, startTrip, completeTrip, getConfig,
+  isUnauthorizedError,
   type Cab, type RideRequest
 } from '../../api/client';
 import { pushNotificationService } from '../../services/PushNotificationService';
@@ -18,6 +19,7 @@ export default function DriverDashboard() {
   const [completedRides, setCompletedRides] = useState<RideRequest[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
+  const [unauthorized, setUnauthorized] = useState(false);
 
   // Accept / Deny modal
   const [consentRide, setConsentRide] = useState<RideRequest | null>(null);
@@ -93,6 +95,7 @@ export default function DriverDashboard() {
     const fetchCabs = async () => {
       try {
         const { data: cabs } = await getCabs();
+        setUnauthorized(false);
         const sanitizedInput = sanitizePhone(phone);
         const found = cabs.find(c => sanitizePhone(c.driverPhone) === sanitizedInput);
         setMyCab(found || null);
@@ -111,7 +114,11 @@ export default function DriverDashboard() {
           setActiveTrips([]);
           setCompletedRides([]);
         }
-      } catch { /* retry */ }
+      } catch (error) {
+        if (isUnauthorizedError(error)) {
+          setUnauthorized(true);
+        }
+      }
     };
 
     fetchCabs();
@@ -139,6 +146,7 @@ export default function DriverDashboard() {
 
       localStorage.setItem('driverPhone', sanitized);
       setPhone(sanitized);
+      setUnauthorized(false);
       setLoggedIn(true);
 
       if (!permissionGranted) {
@@ -291,6 +299,17 @@ export default function DriverDashboard() {
             </form>
           </div>
         </div>
+    );
+  }
+
+  if (unauthorized) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 flex items-center justify-center p-6">
+        <div className="max-w-md text-center text-white space-y-2">
+          <h2 className="text-xl font-semibold">Unauthorized</h2>
+          <p className="text-sm text-indigo-200">You do not have access to driver operations for this session.</p>
+        </div>
+      </div>
     );
   }
 

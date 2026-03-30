@@ -8,8 +8,10 @@ import {
   getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
   getConfig, updateConfig, getCancelledRides, getCabAnalytics,
   getComplaints, closeComplaint, createEvent, updateEvent, uploadEventImage,
+  exportCancelledQueueCsv, exportDriverAnalyticsCsv, exportComplaintsCsv,
+  isUnauthorizedError,
   type RideRequest, type Cab, type EventItinerary, type Location, type DriverAnalytics,
-  type Complaint, type CancelledQueueEntry
+  type Complaint, type CancelledQueueEntry, type RideIncidentType, type ComplaintStatus
 } from '../../api/client';
 import { pushNotificationService } from '../../services/PushNotificationService';
 
@@ -41,6 +43,7 @@ export default function Dashboard() {
   const [selectedRides, setSelectedRides] = useState<Map<number, number>>(new Map());
   const [selectedCabId, setSelectedCabId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [showFleet, setShowFleet] = useState(true);
@@ -62,6 +65,10 @@ export default function Dashboard() {
     const offset = now.getTimezoneOffset() * 60000;
     return new Date(now.getTime() - offset).toISOString().slice(0, 10);
   });
+  const [cancelledDriverFilter, setCancelledDriverFilter] = useState('');
+  const [cancelledStatusFilter, setCancelledStatusFilter] = useState<RideIncidentType | ''>('');
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState<ComplaintStatus | ''>('');
+  const [complaintDateFilter, setComplaintDateFilter] = useState('');
   const [eventForm, setEventForm] = useState({ title: '', description: '', imageUrl: '', startTime: '', endTime: '', locationId: '', notifyGuests: false });
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<DriverAnalytics | null>(null);
@@ -80,13 +87,26 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
+      setUnauthorized(false);
       const [ridesRes, cabsRes, ongoingRes, cancelledRes, complaintsRes] = await Promise.allSettled([
         getPendingRides(),
         getCabs(),
         getOngoingRides(),
-        getCancelledRides(selectedCancelledDate),
-        getComplaints()
+        getCancelledRides({
+          date: selectedCancelledDate,
+          driver: cancelledDriverFilter.trim() || undefined,
+          status: cancelledStatusFilter || undefined,
+        }),
+        getComplaints(complaintStatusFilter || undefined, complaintDateFilter || undefined)
       ]);
+
+      const firstUnauthorized = [ridesRes, cabsRes, ongoingRes, cancelledRes, complaintsRes]
+        .find((result) => result.status === 'rejected' && isUnauthorizedError(result.reason));
+      if (firstUnauthorized) {
+        setUnauthorized(true);
+        setLoading(false);
+        return;
+      }
       if (cabsRes.status === 'fulfilled') setCabs(cabsRes.value.data);
       if (ongoingRes.status === 'fulfilled') setOngoingRides(ongoingRes.value.data);
       if (cancelledRes.status === 'fulfilled') setCancelledRides(cancelledRes.value.data);
@@ -133,7 +153,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCancelledDate]);
+  }, [selectedCancelledDate, cancelledDriverFilter, cancelledStatusFilter, complaintDateFilter, complaintStatusFilter]);
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -337,11 +357,67 @@ export default function Dashboard() {
     }
   };
 
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportCancelledQueue = async () => {
+    try {
+      const res = await exportCancelledQueueCsv({
+        date: selectedCancelledDate,
+        driver: cancelledDriverFilter.trim() || undefined,
+        status: cancelledStatusFilter || undefined,
+      });
+      downloadBlob(res.data, `cancelled-queue-${selectedCancelledDate}.csv`);
+    } catch {
+      alert('Failed to export cancelled queue CSV.');
+    }
+  };
+
+  const handleExportDriverAnalytics = async () => {
+    try {
+      const res = await exportDriverAnalyticsCsv();
+      downloadBlob(res.data, 'driver-analytics-summary.csv');
+    } catch {
+      alert('Failed to export driver analytics CSV.');
+    }
+  };
+
+  const handleExportComplaints = async () => {
+    try {
+      const res = await exportComplaintsCsv({
+        status: complaintStatusFilter || undefined,
+        date: complaintDateFilter || undefined,
+      });
+      downloadBlob(res.data, `complaints-${complaintDateFilter || 'all'}.csv`);
+    } catch {
+      alert('Failed to export complaints CSV.');
+    }
+  };
+
   if (loading) {
     return (
         <div className="min-h-screen bg-gray-900 flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent" />
         </div>
+    );
+  }
+
+  if (unauthorized) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-2">
+          <h2 className="text-xl font-semibold">Unauthorized</h2>
+          <p className="text-sm text-gray-400">You do not have access to admin operations. Please sign in with an admin-enabled session.</p>
+        </div>
+      </div>
     );
   }
 
@@ -541,6 +617,29 @@ export default function Dashboard() {
               </div>
               {showCancelledQueue && (
                 <div className="px-4 pb-4 space-y-2 max-h-64 overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      value={cancelledDriverFilter}
+                      onChange={(e) => setCancelledDriverFilter(e.target.value)}
+                      placeholder="Driver / phone / plate"
+                      className="rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs text-gray-200 outline-none"
+                    />
+                    <select
+                      value={cancelledStatusFilter}
+                      onChange={(e) => setCancelledStatusFilter(e.target.value as RideIncidentType | '')}
+                      className="rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs text-gray-200 outline-none"
+                    >
+                      <option value="">All statuses</option>
+                      <option value="GUEST_CANCELLED">Guest Cancelled</option>
+                      <option value="DRIVER_DECLINED">Driver Declined</option>
+                    </select>
+                    <button
+                      onClick={handleExportCancelledQueue}
+                      className="rounded-md bg-gray-700 hover:bg-gray-600 px-3 py-1.5 text-xs font-medium"
+                    >
+                      Export CSV
+                    </button>
+                  </div>
                   {cancelledRides.length === 0 ? (
                     <p className="text-sm text-gray-500">No cancelled or declined rides for this day.</p>
                   ) : cancelledRides.map((ride) => (
@@ -756,16 +855,24 @@ export default function Dashboard() {
 
             {/* Fleet */}
             <div className="bg-gray-800 rounded-xl border border-gray-700">
-              <button
-                  onClick={() => setShowFleet(!showFleet)}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-750 transition rounded-xl"
-              >
-                <h3 className="font-semibold flex items-center gap-2">
-                  <Car className="w-4 h-4 text-blue-400" />
-                  Fleet ({availableCabs.length} free / {cabs.length} total)
-                </h3>
-                {showFleet ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
+              <div className="px-4 py-3 flex items-center justify-between gap-2">
+                <button
+                    onClick={() => setShowFleet(!showFleet)}
+                    className="flex-1 flex items-center justify-between hover:bg-gray-750 transition rounded-xl"
+                >
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Car className="w-4 h-4 text-blue-400" />
+                    Fleet ({availableCabs.length} free / {cabs.length} total)
+                  </h3>
+                  {showFleet ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={handleExportDriverAnalytics}
+                  className="rounded-md bg-gray-700 hover:bg-gray-600 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
+                >
+                  Export CSV
+                </button>
+              </div>
               {showFleet && (
                   <div className="px-4 pb-4 space-y-2 max-h-96 overflow-y-auto">
                     {cabs.map((cab) => (
@@ -826,6 +933,29 @@ export default function Dashboard() {
               </button>
               {showComplaints && (
                 <div className="px-4 pb-4 space-y-2 max-h-72 overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <select
+                      value={complaintStatusFilter}
+                      onChange={(e) => setComplaintStatusFilter(e.target.value as ComplaintStatus | '')}
+                      className="rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs text-gray-200 outline-none"
+                    >
+                      <option value="">All statuses</option>
+                      <option value="OPEN">OPEN</option>
+                      <option value="CLOSED">CLOSED</option>
+                    </select>
+                    <input
+                      type="date"
+                      value={complaintDateFilter}
+                      onChange={(e) => setComplaintDateFilter(e.target.value)}
+                      className="rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs text-gray-200 outline-none"
+                    />
+                    <button
+                      onClick={handleExportComplaints}
+                      className="rounded-md bg-gray-700 hover:bg-gray-600 px-3 py-1.5 text-xs font-medium"
+                    >
+                      Export CSV
+                    </button>
+                  </div>
                   {complaints.length === 0 ? (
                     <p className="text-sm text-gray-500">No complaints filed.</p>
                   ) : complaints.map((complaint) => (
@@ -957,7 +1087,24 @@ export default function Dashboard() {
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   onChange={(e) => {
-                    setEventImageFile(e.target.files?.[0] || null);
+                    const file = e.target.files?.[0] || null;
+                    if (!file) {
+                      setEventImageFile(null);
+                      setEventImageError('');
+                      return;
+                    }
+                    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+                    if (!allowedTypes.includes(file.type)) {
+                      setEventImageFile(null);
+                      setEventImageError('Only JPG, PNG, or WEBP images are allowed.');
+                      return;
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                      setEventImageFile(null);
+                      setEventImageError('Image exceeds max size of 5MB.');
+                      return;
+                    }
+                    setEventImageFile(file);
                     setEventImageError('');
                   }}
                   className="w-full text-xs text-gray-300 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white hover:file:bg-blue-500"

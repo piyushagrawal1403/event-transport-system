@@ -2,6 +2,7 @@ package com.dispatch.controller;
 
 import com.dispatch.dto.RideRequestDto;
 import com.dispatch.model.RideIncident;
+import com.dispatch.model.RideIncidentType;
 import com.dispatch.model.RideRequest;
 import com.dispatch.service.DispatchService;
 import com.dispatch.service.RideService;
@@ -59,8 +60,10 @@ public class RideController {
 
     @GetMapping("/cancelled")
     public ResponseEntity<List<RideIncident>> getCancelledRides(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(rideService.getCancelledRides(date));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) String driver,
+            @RequestParam(required = false) RideIncidentType status) {
+        return ResponseEntity.ok(rideService.getCancelledRides(date, driver, status));
     }
 
     @GetMapping("/cab/{cabId}/completed")

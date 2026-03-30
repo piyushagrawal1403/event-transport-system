@@ -20,9 +20,11 @@ A production-style transport dispatch platform for coordinating event cab operat
 - Driver analytics (total km, completed/denied trips, avg acceptance time)
 - Distance tracking (`Location.distanceFromMainVenue`, `Cab.totalKm`)
 - Daily cancelled/declined history queue (persistent incident log)
+- Daily admin operational reports and CSV exports
 - Complaint system (OPEN/CLOSED)
 - Event itinerary with details page and image support
 - Admin event image upload endpoint
+- Role-based API access control for ADMIN/DRIVER/GUEST contexts
 - Push notifications for ADMIN / DRIVER / GUEST
 - SLA alerting for delayed rides
 
@@ -47,11 +49,13 @@ A production-style transport dispatch platform for coordinating event cab operat
 - Assign rides to available cabs with capacity checks
 - Monitor active trips
 - View and filter cancelled/declined history by date
+- Filter cancelled queue by date, driver, and incident status
 - View driver details in incident queue
 - Open driver analytics modal from fleet list
 - Manage complaints and close tickets
+- Filter complaints by status/date and export CSV
 - Manage events (create/update, notify guests)
-- Upload event images (`/api/v1/events/images`)
+- Upload event images (`/api/v1/events/images`) with type/size validation
 - Edit admin contact settings
 - Receive SLA and operational push alerts
 
@@ -89,7 +93,8 @@ A production-style transport dispatch platform for coordinating event cab operat
 
 Notes:
 - Cancelled Queue is now backed by persistent `ride_incidents`, so entries do not disappear when a ride is later reassigned or accepted.
-- Queue is filterable by day from admin dashboard.
+- Queue is filterable by date + driver + incident type.
+- Complaints lifecycle is fixed to `OPEN` -> `CLOSED`.
 
 ## Frontend Routes
 
@@ -114,7 +119,7 @@ Notes:
 | `GET` | `/api/v1/rides/cab/{cabId}` | Active rides by cab |
 | `GET` | `/api/v1/rides/cab/{cabId}/completed` | Completed rides by cab |
 | `GET` | `/api/v1/rides/ongoing` | Admin ongoing trips |
-| `GET` | `/api/v1/rides/cancelled?date=YYYY-MM-DD` | Daily cancelled/declined incidents |
+| `GET` | `/api/v1/rides/cancelled?date=YYYY-MM-DD&driver=&status=` | Filtered cancelled/declined incidents |
 | `PUT` | `/api/v1/rides/{id}/accept` | Driver accepts offered batch |
 | `PUT` | `/api/v1/rides/{id}/deny` | Driver denies offered batch |
 | `DELETE` | `/api/v1/rides/{rideId}` | Cancel ride |
@@ -152,8 +157,30 @@ Notes:
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/complaints` | File complaint |
-| `GET` | `/api/v1/complaints?status=OPEN|CLOSED` | List complaints |
+| `GET` | `/api/v1/complaints?status=OPEN|CLOSED&date=YYYY-MM-DD` | Filtered complaints |
 | `PUT` / `PATCH` | `/api/v1/complaints/{id}/close` | Close complaint |
+
+### Admin Reports / Exports
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/admin/reports/daily?date=YYYY-MM-DD` | Daily operational report |
+| `GET` | `/api/v1/admin/reports/exports/cancelled-queue?...` | Cancelled queue CSV |
+| `GET` | `/api/v1/admin/reports/exports/driver-analytics` | Driver analytics CSV |
+| `GET` | `/api/v1/admin/reports/exports/complaints?...` | Complaints CSV |
+
+### Access Control Headers (Protected APIs)
+
+For admin/driver-protected endpoints, send:
+
+- `X-User-Role: ADMIN | DRIVER | GUEST`
+- `X-Access-Key: <role access key>`
+- `X-User-Phone: <driver/guest phone>` (required for `DRIVER`)
+
+Server returns JSON errors on denied access:
+
+- `401 Unauthorized`
+- `403 Forbidden`
 
 ### Config / Metadata
 
@@ -177,7 +204,9 @@ Notes:
 ### 1) Daily cancelled/declined history
 
 ```bash
-curl -X GET "http://localhost:8080/api/v1/rides/cancelled?date=2026-03-29"
+curl -X GET "http://localhost:8080/api/v1/rides/cancelled?date=2026-03-29&status=DRIVER_DECLINED" \
+  -H "X-User-Role: ADMIN" \
+  -H "X-Access-Key: dev-admin-key"
 ```
 
 ### 2) File a complaint (guest)
@@ -197,6 +226,8 @@ curl -X POST "http://localhost:8080/api/v1/complaints" \
 
 ```bash
 curl -X PUT "http://localhost:8080/api/v1/complaints/12/close" \
+  -H "X-User-Role: ADMIN" \
+  -H "X-Access-Key: dev-admin-key" \
   -H "Content-Type: application/json" \
   -d '{
     "closedBy": "Event Admin"
@@ -207,6 +238,8 @@ curl -X PUT "http://localhost:8080/api/v1/complaints/12/close" \
 
 ```bash
 curl -X POST "http://localhost:8080/api/v1/events/images" \
+  -H "X-User-Role: ADMIN" \
+  -H "X-Access-Key: dev-admin-key" \
   -F "file=@/absolute/path/to/event-banner.jpg"
 ```
 
@@ -223,6 +256,8 @@ Sample response:
 ```bash
 curl -X POST "http://localhost:8080/api/v1/events" \
   -H "Content-Type: application/json" \
+  -H "X-User-Role: ADMIN" \
+  -H "X-Access-Key: dev-admin-key" \
   -d '{
     "title": "Sponsor Meetup",
     "description": "Networking with sponsors",
@@ -286,7 +321,33 @@ web-push generate-vapid-keys
 - Admin uploads image via event modal.
 - Backend saves images to `uploads/events`.
 - Files are served from `/uploads/events/**`.
-- Stored URL is persisted in `EventItinerary.imageUrl`.
+- Backend validates MIME type (`jpg/png/webp`), max size (5MB), and sanitizes file names.
+- If no image is uploaded, backend applies default image `/images/default-event.svg`.
+
+## Phase D Verification Steps
+
+```bash
+cd backend
+mvn test
+```
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+Manual checks:
+
+- Open `/admin` and verify Cancelled Queue + Complaints filters and CSV export buttons.
+- Verify unauthorized fallback appears if admin/driver keys are invalid.
+- Upload invalid event image type/size and confirm validation error.
+- Create/close complaints and verify lifecycle remains `OPEN` -> `CLOSED`.
 
 ## Seed Data
 

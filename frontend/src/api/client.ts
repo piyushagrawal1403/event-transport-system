@@ -1,6 +1,9 @@
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const ADMIN_ACCESS_KEY = import.meta.env.VITE_ADMIN_ACCESS_KEY || 'dev-admin-key';
+const DRIVER_ACCESS_KEY = import.meta.env.VITE_DRIVER_ACCESS_KEY || 'dev-driver-key';
+const GUEST_ACCESS_KEY = import.meta.env.VITE_GUEST_ACCESS_KEY || 'dev-guest-key';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -8,6 +11,53 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+type ApiRole = 'ADMIN' | 'DRIVER' | 'GUEST';
+
+const getRoleContext = (): { role: ApiRole; phone?: string; accessKey: string } => {
+  if (typeof window === 'undefined') {
+    return { role: 'GUEST', accessKey: GUEST_ACCESS_KEY };
+  }
+
+  const path = window.location.pathname;
+  if (path.startsWith('/admin')) {
+    return { role: 'ADMIN', accessKey: ADMIN_ACCESS_KEY };
+  }
+  if (path.startsWith('/driver')) {
+    const phone = localStorage.getItem('driverPhone') || undefined;
+    return { role: 'DRIVER', phone, accessKey: DRIVER_ACCESS_KEY };
+  }
+
+  const guestPhone = localStorage.getItem('guestPhone') || undefined;
+  return { role: 'GUEST', phone: guestPhone, accessKey: GUEST_ACCESS_KEY };
+};
+
+api.interceptors.request.use((config) => {
+  const roleContext = getRoleContext();
+  config.headers = config.headers || {};
+  config.headers['X-User-Role'] = roleContext.role;
+  config.headers['X-Access-Key'] = roleContext.accessKey;
+  if (roleContext.phone) {
+    config.headers['X-User-Phone'] = roleContext.phone;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    if (typeof window !== 'undefined' && (status === 401 || status === 403)) {
+      window.dispatchEvent(new CustomEvent('api-unauthorized', { detail: { status } }));
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const isUnauthorizedError = (error: unknown) => {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  return status === 401 || status === 403;
+};
 
 // === Types ===
 
@@ -78,6 +128,26 @@ export interface DriverAnalytics {
   tripsCompleted: number;
   tripsDenied: number;
   averageAcceptanceTimeSeconds: number;
+}
+
+export interface TopDriver {
+  cabId: number;
+  driverName: string;
+  licensePlate: string;
+  tripsCompleted: number;
+  totalKm: number;
+}
+
+export interface AdminDailyReport {
+  date: string;
+  totalRides: number;
+  completedRides: number;
+  cancelledRides: number;
+  driverDeclinedCount: number;
+  openComplaints: number;
+  closedComplaints: number;
+  topDriversByTrips: TopDriver[];
+  topDriversByKm: TopDriver[];
 }
 
 export type ComplaintStatus = 'OPEN' | 'CLOSED';
@@ -159,9 +229,13 @@ export const getCabCompletedRides = (cabId: number) =>
 export const getOngoingRides = () =>
     api.get<RideRequest[]>('/api/v1/rides/ongoing');
 
-export const getCancelledRides = (date?: string) =>
+export const getCancelledRides = (filters?: { date?: string; driver?: string; status?: RideIncidentType | '' }) =>
     api.get<CancelledQueueEntry[]>('/api/v1/rides/cancelled', {
-      params: date ? { date } : {}
+      params: {
+        ...(filters?.date ? { date: filters.date } : {}),
+        ...(filters?.driver ? { driver: filters.driver } : {}),
+        ...(filters?.status ? { status: filters.status } : {}),
+      }
     });
 
 export const getLocations = () =>
@@ -272,9 +346,12 @@ export const createComplaint = (payload: {
   rideRequestId?: number;
 }) => api.post<Complaint>('/api/v1/complaints', payload);
 
-export const getComplaints = (status?: ComplaintStatus) =>
+export const getComplaints = (status?: ComplaintStatus, date?: string) =>
     api.get<Complaint[]>('/api/v1/complaints', {
-      params: status ? { status } : {}
+      params: {
+        ...(status ? { status } : {}),
+        ...(date ? { date } : {}),
+      }
     });
 
 export const closeComplaint = (id: number, closedBy?: string) =>
@@ -301,5 +378,36 @@ export const getConfig = () =>
 
 export const updateConfig = (payload: { adminPhone?: string; adminName?: string }) =>
     api.put<{ adminPhone: string; adminName: string }>('/api/v1/config', payload);
+
+// === Admin Reports and CSV Exports ===
+
+export const getAdminDailyReport = (date?: string) =>
+    api.get<AdminDailyReport>('/api/v1/admin/reports/daily', {
+      params: date ? { date } : {}
+    });
+
+export const exportCancelledQueueCsv = (filters?: { date?: string; driver?: string; status?: RideIncidentType | '' }) =>
+    api.get<Blob>('/api/v1/admin/reports/exports/cancelled-queue', {
+      params: {
+        ...(filters?.date ? { date: filters.date } : {}),
+        ...(filters?.driver ? { driver: filters.driver } : {}),
+        ...(filters?.status ? { status: filters.status } : {}),
+      },
+      responseType: 'blob',
+    });
+
+export const exportDriverAnalyticsCsv = () =>
+    api.get<Blob>('/api/v1/admin/reports/exports/driver-analytics', {
+      responseType: 'blob',
+    });
+
+export const exportComplaintsCsv = (filters?: { status?: ComplaintStatus; date?: string }) =>
+    api.get<Blob>('/api/v1/admin/reports/exports/complaints', {
+      params: {
+        ...(filters?.status ? { status: filters.status } : {}),
+        ...(filters?.date ? { date: filters.date } : {}),
+      },
+      responseType: 'blob',
+    });
 
 export default api;

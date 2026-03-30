@@ -5,6 +5,8 @@ import com.dispatch.model.*;
 import com.dispatch.repository.CabRepository;
 import com.dispatch.repository.LocationRepository;
 import com.dispatch.repository.RideRequestRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +16,8 @@ import java.time.LocalDate;
 
 @Service
 public class RideService {
+
+    private static final Logger log = LoggerFactory.getLogger(RideService.class);
 
     private final RideRequestRepository rideRequestRepository;
     private final LocationRepository locationRepository;
@@ -112,8 +116,8 @@ public class RideService {
         return rideRequestRepository.findByCabIdAndStatus(cabId, RideStatus.COMPLETED);
     }
 
-    public List<RideIncident> getCancelledRides(LocalDate date) {
-        return rideIncidentService.getIncidentsForDate(date);
+    public List<RideIncident> getCancelledRides(LocalDate date, String driverQuery, RideIncidentType incidentType) {
+        return rideIncidentService.getIncidentsForDate(date, driverQuery, incidentType);
     }
 
     @Transactional
@@ -172,6 +176,8 @@ public class RideService {
                         String.format("Ride #%d was cancelled by the guest. You are now available.", rideId));
             }
         }
+
+        log.info("action=ride_cancelled rideId={} guest='{}' dispatched={} byRole=ADMIN", rideId, ride.getGuestName(), wasDispatched);
 
         return rideRequestRepository.save(ride);
     }

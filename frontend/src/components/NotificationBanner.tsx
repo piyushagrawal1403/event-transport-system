@@ -51,7 +51,12 @@ export default function NotificationBanner() {
             {toasts.map(toast => (
                 <div
                     key={toast.id}
-                    className="pointer-events-auto flex items-start gap-3 bg-blue-600 text-white px-4 py-3 rounded-xl shadow-lg animate-slide-in"
+                    className="pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg animate-slide-in border"
+                    style={{
+                        background: 'linear-gradient(135deg, var(--w-accent), var(--w-accent-strong))',
+                        borderColor: 'color-mix(in srgb, var(--w-accent) 55%, #ffffff 45%)',
+                        color: '#fff',
+                    }}
                 >
                     <Bell className="w-4 h-4 mt-0.5 flex-shrink-0" />
                     <p className="text-sm flex-1 leading-snug">{toast.message}</p>

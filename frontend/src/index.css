@@ -1,17 +1,232 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Cinzel:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 @layer base {
+  /* ── Navy & Champagne (only theme) ────────────────────────── */
   :root {
-    --radius: 0.5rem
+    --radius: 0.75rem;
+    --w-bg: linear-gradient(135deg, #f2f4f9 0%, #e4e8f4 40%, #d8deee 100%);
+    --w-surface: rgba(242, 244, 249, 0.97);
+    --w-surface-strong: #f7f8fc;
+    --w-border: rgba(8, 28, 80, 0.2);
+    --w-text: #080f2e;
+    --w-muted: #2c3e70;
+    --w-accent: #0b2191;
+    --w-accent-strong: #071464;
+    --w-accent-soft: #c8d0f0;
+    --w-rose-light: #dde2f5;
+    --w-shadow: 0 20px 50px rgba(7, 20, 100, 0.18);
+    --w-shadow-soft: 0 8px 24px rgba(7, 20, 100, 0.12);
+    --w-shadow-3d: 0 15px 35px rgba(7, 20, 100, 0.15), 0 8px 20px rgba(7, 20, 100, 0.1);
+    --w-highlight: rgba(255, 255, 255, 0.9);
+    --w-topbar-start: #071464;
+    --w-topbar-end: #0b2191;
+  }
+
+  html,
+  body,
+  #root {
+    margin: 0;
+    min-height: 100%;
+  }
+
+  body {
+    background: var(--w-bg);
+    color: var(--w-text);
+    font-family: 'Inter', sans-serif;
   }
 }
 
-/* index.css — add this */
 @keyframes slide-in {
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+@keyframes floral-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes subtle-glow {
+  0%, 100% { box-shadow: 0 15px 35px rgba(7, 20, 100, 0.12), 0 8px 20px rgba(7, 20, 100, 0.08); }
+  50% { box-shadow: 0 20px 45px rgba(11, 33, 145, 0.15), 0 10px 25px rgba(11, 33, 145, 0.1); }
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 0%; }
+  50% { background-position: 100% 0%; }
+}
+
 .animate-slide-in {
   animation: slide-in 0.2s ease-out;
+}
+
+@layer components {
+  .wedding-app-bg {
+    @apply min-h-screen;
+    background: var(--w-bg);
+  }
+
+  .wedding-shell {
+    @apply backdrop-blur-sm border rounded-3xl;
+    background: var(--w-surface);
+    border-color: var(--w-border);
+    box-shadow: var(--w-shadow);
+    position: relative;
+    background-image:
+      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(8, 28, 80, 0.03) 2px, rgba(8, 28, 80, 0.03) 4px),
+      linear-gradient(to bottom, transparent 0%, rgba(11, 33, 145, 0.02) 100%);
+  }
+
+  .wedding-card {
+    @apply rounded-3xl border backdrop-blur-sm transition-all duration-300;
+    background: var(--w-surface-strong);
+    border-color: var(--w-border);
+    box-shadow: var(--w-shadow-3d);
+    position: relative;
+    overflow: hidden;
+    border-width: 1.5px;
+    background-image:
+      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(8, 28, 80, 0.04) 2px, rgba(8, 28, 80, 0.04) 4px),
+      linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 100%);
+  }
+
+  .wedding-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(8, 28, 80, 0.04) 0%, transparent 50%, rgba(11, 33, 145, 0.02) 100%);
+  }
+
+  .wedding-card:hover {
+    box-shadow: 0 25px 60px rgba(7, 20, 100, 0.2), 0 12px 30px rgba(7, 20, 100, 0.14);
+    transform: translateY(-2px);
+  }
+
+  .wedding-soft-card {
+    @apply rounded-xl border;
+    background: color-mix(in srgb, var(--w-surface-strong) 88%, #ffffff 12%);
+    border-color: var(--w-border);
+    box-shadow: var(--w-shadow-soft);
+  }
+
+  .wedding-topbar {
+    @apply border-b backdrop-blur-lg;
+    background: linear-gradient(135deg, var(--w-topbar-start) 0%, var(--w-topbar-end) 100%);
+    border-color: color-mix(in srgb, var(--w-border) 70%, transparent 30%);
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(7, 20, 100, 0.2);
+  }
+
+  .wedding-heading {
+    @apply font-semibold tracking-widest;
+    color: var(--w-text);
+    font-family: 'Playfair Display', serif;
+    letter-spacing: 0.05em;
+  }
+
+  .wedding-heading-royal {
+    @apply font-bold;
+    font-family: 'Playfair Display', serif;
+    color: var(--w-accent-strong);
+    font-size: 1.875rem;
+    letter-spacing: 0.02em;
+  }
+
+  .wedding-input {
+    @apply w-full rounded-2xl border px-4 py-3 outline-none transition;
+    border-color: var(--w-border);
+    background: color-mix(in srgb, var(--w-surface-strong) 90%, #ffffff 10%);
+    color: var(--w-text);
+    box-shadow: inset 0 2px 4px rgba(7, 20, 100, 0.05);
+  }
+
+  .wedding-input:focus {
+    border-color: var(--w-accent);
+    box-shadow: inset 0 2px 4px rgba(7, 20, 100, 0.05), 0 0 0 3px rgba(11, 33, 145, 0.18);
+  }
+
+  .wedding-button-primary {
+    @apply rounded-2xl font-semibold text-white transition shadow-lg active:translate-y-0.5;
+    background: linear-gradient(135deg, var(--w-accent) 0%, var(--w-accent-strong) 100%);
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--w-accent) 30%, transparent 70%), 0 6px 12px color-mix(in srgb, var(--w-accent) 20%, transparent 80%);
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.05em;
+  }
+
+  .wedding-button-primary:hover {
+    filter: brightness(1.08);
+    box-shadow: 0 15px 35px color-mix(in srgb, var(--w-accent) 35%, transparent 65%), 0 8px 16px color-mix(in srgb, var(--w-accent) 25%, transparent 75%);
+  }
+
+  .wedding-button-muted {
+    @apply rounded-2xl border transition;
+    background: color-mix(in srgb, var(--w-surface-strong) 84%, #ffffff 16%);
+    border-color: var(--w-border);
+    color: var(--w-text);
+    box-shadow: var(--w-shadow-soft);
+  }
+
+  .wedding-icon-tile {
+    @apply inline-flex items-center justify-center rounded-3xl border;
+    width: 4.5rem;
+    height: 4.5rem;
+    border-color: var(--w-border);
+    background: linear-gradient(155deg, rgba(255,255,255,0.7) 0%, color-mix(in srgb, var(--w-accent-soft) 60%, #ffffff 40%) 100%);
+    box-shadow: var(--w-shadow-3d);
+    animation: floral-float 4s ease-in-out infinite;
+    border-width: 1.5px;
+  }
+
+  .wedding-pill {
+    @apply rounded-full border px-3 py-1.5 text-xs font-medium;
+    border-color: var(--w-border);
+    background: color-mix(in srgb, var(--w-accent-soft) 55%, #ffffff 45%);
+    color: var(--w-text);
+    box-shadow: var(--w-shadow-soft);
+  }
+
+  .wedding-overlay {
+    @apply fixed inset-0 z-50 flex flex-col;
+    min-height: 100dvh;
+    margin: 0 !important;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: rgba(8, 15, 46, 0.55);
+    backdrop-filter: blur(4px);
+  }
+
+  .wedding-modal {
+    @apply w-full flex flex-col overflow-hidden;
+    flex: 1;
+    min-height: 100dvh;
+    background: var(--w-surface-strong);
+    border-top: 1.5px solid var(--w-border);
+    box-shadow: var(--w-shadow);
+    background-image:
+      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(8, 28, 80, 0.04) 2px, rgba(8, 28, 80, 0.04) 4px),
+      linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 100%);
+  }
+
+  .wedding-modal-header {
+    @apply flex items-center justify-between px-5 py-4 flex-shrink-0 border-b;
+    background: linear-gradient(135deg, var(--w-topbar-start) 0%, var(--w-topbar-end) 100%);
+    border-color: color-mix(in srgb, var(--w-border) 50%, transparent 50%);
+  }
+
+  .wedding-modal-body {
+    @apply flex-1 overflow-y-auto p-4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

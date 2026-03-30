@@ -463,13 +463,13 @@ export default function Dashboard() {
                     const destination = first.direction === 'TO_VENUE' ? 'Main Venue' : first.location.name;
                     return (
                         <div key={magicLink} className="bg-gray-800 rounded-xl overflow-hidden border-2 border-yellow-700/50">
-                          <div className="px-4 py-3 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
+                          <div className="px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-3 min-w-0">
                               <Car className="w-5 h-5 text-yellow-400" />
                               <span className="font-mono font-medium">{first.cab?.licensePlate || '—'}</span>
-                              <span className="text-gray-400">{first.cab?.driverName || '—'}</span>
+                              <span className="text-gray-400 truncate">{first.cab?.driverName || '—'}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[first.status] || STATUS_BADGE['PENDING']}`}>
                           {first.status.replace('_', ' ')}
                         </span>
@@ -487,7 +487,7 @@ export default function Dashboard() {
                                       alert('Failed to cancel one or more rides.');
                                     }
                                   }}
-                                  className="text-xs text-red-400 hover:text-red-300 font-medium border border-red-700/50 rounded px-2 py-0.5"
+                                  className="text-xs text-red-400 hover:text-red-300 font-medium border border-red-700/50 rounded px-2 py-0.5 whitespace-nowrap"
                                 >
                                   Cancel Trip
                                 </button>
@@ -639,7 +639,7 @@ export default function Dashboard() {
                       return (
                           <label
                               key={ride.id}
-                              className={`flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-750 transition ${
+                              className={`flex flex-wrap items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-750 transition ${
                                   waitMins >= 15 ? 'bg-red-900/20' : ''
                               }`}
                           >
@@ -650,9 +650,9 @@ export default function Dashboard() {
                                 className="w-5 h-5 mt-0.5 rounded border-gray-600 text-blue-500 focus:ring-blue-500 bg-gray-700"
                             />
                             <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
                                 <span className="font-medium truncate">{ride.guestName}</span>
-                                <span className="text-gray-400 text-sm">{ride.guestPhone}</span>
+                                <span className="text-gray-400 text-sm truncate">{ride.guestPhone}</span>
                               </div>
                               <div className="flex items-center gap-3 text-sm text-gray-400">
                                 <span>{ride.passengerCount} pax</span>
@@ -670,7 +670,7 @@ export default function Dashboard() {
                                   </div>
                               )}
                             </div>
-                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            <div className="w-full pl-8 flex items-center justify-between gap-2 sm:w-auto sm:pl-0 sm:flex-col sm:items-end sm:justify-start">
                         <span className={`text-sm font-mono font-bold ${
                             waitMins >= 15 ? 'text-red-400 animate-pulse' :
                                 waitMins >= 10 ? 'text-orange-400' :

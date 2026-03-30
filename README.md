@@ -1,59 +1,309 @@
 # Event Transport Dispatch System
 
-A lightweight, reliable transport dispatch system for coordinating a fleet of ~40 cabs transporting up to 10,000 guests between ~30 hotels and a single main venue.
+A production-style transport dispatch platform for coordinating event cab operations across hotels and a main venue.
 
-## Architecture
+## Tech Stack
 
-- **Backend:** Java 17, Spring Boot 3.2, Spring Data JPA, H2 (dev) / PostgreSQL (prod)
-- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, PWA
-- **Infrastructure:** Dockerized backend, static frontend deployable to S3/CloudFront/Netlify
+- Backend: Java 17, Spring Boot 3.2, Spring Data JPA
+- Database: H2 (dev), PostgreSQL (prod)
+- Frontend: React 18, TypeScript, Vite, Tailwind CSS
+- PWA: Service worker + Web Push (VAPID)
+
+## Core Capabilities
+
+- Guest ride booking with passenger split logic (for > cab capacity)
+- Admin dispatch queue with batch assignment and capacity checks
+- Driver consent flow (accept / deny) before trip start
+- OTP validation at trip start (not drop-off)
+- Live trip progression: OFFERED -> ACCEPTED -> ARRIVED -> IN_TRANSIT -> COMPLETED
+- Guest/admin cancellation handling with notifications
+- Driver analytics (total km, completed/denied trips, avg acceptance time)
+- Distance tracking (`Location.distanceFromMainVenue`, `Cab.totalKm`)
+- Daily cancelled/declined history queue (persistent incident log)
+- Complaint system (OPEN/CLOSED)
+- Event itinerary with details page and image support
+- Admin event image upload endpoint
+- Push notifications for ADMIN / DRIVER / GUEST
+- SLA alerting for delayed rides
+
+## User Roles and Features
+
+### Guest
+
+- Login with name + phone
+- View event timeline
+- Open event details page (`/events/:eventId`)
+- Book ride (to venue / to hotel)
+- Use custom destination when selecting `Others`
+- Track active ride status in real time
+- View OTP at pickup for trip start
+- Cancel eligible rides
+- File complaint from header
+- Receive push notifications
+
+### Admin
+
+- View pending ride queue grouped by location
+- Assign rides to available cabs with capacity checks
+- Monitor active trips
+- View and filter cancelled/declined history by date
+- View driver details in incident queue
+- Open driver analytics modal from fleet list
+- Manage complaints and close tickets
+- Manage events (create/update, notify guests)
+- Upload event images (`/api/v1/events/images`)
+- Edit admin contact settings
+- Receive SLA and operational push alerts
+
+### Driver
+
+- View assigned/active rides
+- Accept or deny assigned batch
+- Mark arrived
+- Start trip via OTP
+- Complete trip
+- Toggle availability/offline status
+- Receive targeted push notifications
+
+## Ride and Incident Lifecycle
+
+### RideStatus
+
+- `PENDING`
+- `OFFERED`
+- `ACCEPTED`
+- `ARRIVED`
+- `IN_TRANSIT`
+- `COMPLETED`
+- `CANCELLED`
+
+### ComplaintStatus
+
+- `OPEN`
+- `CLOSED`
+
+### RideIncidentType
+
+- `GUEST_CANCELLED`
+- `DRIVER_DECLINED`
+
+Notes:
+- Cancelled Queue is now backed by persistent `ride_incidents`, so entries do not disappear when a ride is later reassigned or accepted.
+- Queue is filterable by day from admin dashboard.
+
+## Frontend Routes
+
+| Route | Description |
+|---|---|
+| `/` | Guest login |
+| `/home` | Guest home (timeline + booking + active rides) |
+| `/events/:eventId` | Guest event details |
+| `/admin` | Admin dashboard |
+| `/driver` | Driver dashboard |
+
+## API Reference
+
+### Rides
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/rides` | Create ride request |
+| `GET` | `/api/v1/rides/pending` | Pending queue |
+| `GET` | `/api/v1/rides/guest?phone=` | Guest active rides |
+| `GET` | `/api/v1/rides/trip/{magicLinkId}` | Batch by magic link |
+| `GET` | `/api/v1/rides/cab/{cabId}` | Active rides by cab |
+| `GET` | `/api/v1/rides/cab/{cabId}/completed` | Completed rides by cab |
+| `GET` | `/api/v1/rides/ongoing` | Admin ongoing trips |
+| `GET` | `/api/v1/rides/cancelled?date=YYYY-MM-DD` | Daily cancelled/declined incidents |
+| `PUT` | `/api/v1/rides/{id}/accept` | Driver accepts offered batch |
+| `PUT` | `/api/v1/rides/{id}/deny` | Driver denies offered batch |
+| `DELETE` | `/api/v1/rides/{rideId}` | Cancel ride |
+
+### Dispatch
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/dispatch/assign` | Assign rides to cab |
+| `POST` | `/api/v1/dispatch/arrive/{id}` | Mark arrived |
+| `POST` | `/api/v1/dispatch/start/{id}` | Start trip with OTP |
+| `POST` | `/api/v1/dispatch/complete/{id}` | Complete trip |
+| `POST` | `/api/v1/dispatch/status/{magicLinkId}` | Admin status override |
+
+### Cabs
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/cabs` | Fleet list |
+| `GET` | `/api/v1/cabs/{cabId}/analytics` | Driver analytics |
+| `PUT` | `/api/v1/cabs/status` | Driver availability status |
+
+### Events
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/events` | List events |
+| `GET` | `/api/v1/events/{id}` | Event details |
+| `POST` | `/api/v1/events` | Create event |
+| `PUT` | `/api/v1/events/{id}` | Update event |
+| `POST` | `/api/v1/events/images` | Upload event image (multipart) |
+
+### Complaints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/complaints` | File complaint |
+| `GET` | `/api/v1/complaints?status=OPEN|CLOSED` | List complaints |
+| `PUT` / `PATCH` | `/api/v1/complaints/{id}/close` | Close complaint |
+
+### Config / Metadata
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/locations` | Locations + distance from venue |
+| `GET` | `/api/v1/config` | Admin contact config |
+| `PUT` | `/api/v1/config` | Update admin contact config |
+| `GET` | `/api/v1/notifications` | Poll event notifications |
+
+### Push
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/push/subscribe` | Register web push subscription |
+| `POST` | `/api/v1/push/unsubscribe` | Unregister subscription |
+| `GET` | `/api/v1/push/vapid-public-key` | Retrieve VAPID public key |
+
+## API Examples (curl)
+
+### 1) Daily cancelled/declined history
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/rides/cancelled?date=2026-03-29"
+```
+
+### 2) File a complaint (guest)
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/complaints" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "guestName": "Aman",
+    "guestPhone": "9999999999",
+    "message": "Driver arrived very late",
+    "rideRequestId": 42
+  }'
+```
+
+### 3) Close complaint (admin)
+
+```bash
+curl -X PUT "http://localhost:8080/api/v1/complaints/12/close" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "closedBy": "Event Admin"
+  }'
+```
+
+### 4) Upload event image (admin)
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/events/images" \
+  -F "file=@/absolute/path/to/event-banner.jpg"
+```
+
+Sample response:
+
+```json
+{
+  "imageUrl": "http://localhost:8080/uploads/events/2cf0f3d2-a4f0-4de2-9abf-1e74c8f9d8df.jpg"
+}
+```
+
+### 5) Create event with uploaded image URL
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/events" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Sponsor Meetup",
+    "description": "Networking with sponsors",
+    "imageUrl": "http://localhost:8080/uploads/events/2cf0f3d2-a4f0-4de2-9abf-1e74c8f9d8df.jpg",
+    "startTime": "2026-03-30T16:00:00",
+    "endTime": "2026-03-30T17:00:00",
+    "locationId": 1,
+    "notifyGuests": true
+  }'
+```
 
 ## Quick Start
 
 ### Backend
+
 ```bash
 cd backend
 mvn spring-boot:run
-# Runs on http://localhost:8080
-# H2 console at http://localhost:8080/h2-console
 ```
 
+Backend runs on `http://localhost:8080`.
+
 ### Frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
-# Runs on http://localhost:5173
 ```
 
-## Routes
+Frontend runs on `http://localhost:5173`.
 
-| Route | Description |
-|-------|-------------|
-| `/` | Guest login (name + phone) |
-| `/request` | Guest ride request form |
-| `/status` | Guest active ride status (polling) |
-| `/admin` | Admin dispatch dashboard |
-| `/d/:magicLinkId` | Driver magic link (OTP completion) |
-| `/driver` | Driver dashboard |
+## Configuration
 
-## API Endpoints
+### Backend (`backend/src/main/resources/application.properties`)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/rides` | Create ride request |
-| GET | `/api/v1/rides/pending` | Get pending rides |
-| GET | `/api/v1/rides/guest?phone=` | Get guest's active rides |
-| GET | `/api/v1/rides/trip/:magicLinkId` | Get trip rides |
-| GET | `/api/v1/cabs` | Get all cabs |
-| GET | `/api/v1/locations` | Get all locations |
-| POST | `/api/v1/dispatch/assign` | Assign rides to cab |
-| POST | `/api/v1/dispatch/complete/:magicLinkId` | Complete trip with OTP |
-| POST | `/api/v1/dispatch/status/:magicLinkId` | Update trip status |
+- `spring.jpa.hibernate.ddl-auto=update`
+- `vapid.public-key`, `vapid.private-key`, `vapid.subject`
+- `app.upload.events-dir=uploads/events`
+- Multipart limits:
+  - `spring.servlet.multipart.max-file-size=5MB`
+  - `spring.servlet.multipart.max-request-size=5MB`
+
+### Environment Variables (recommended)
+
+```bash
+export VAPID_PUBLIC_KEY=<your_public_key>
+export VAPID_PRIVATE_KEY=<your_private_key>
+export VAPID_SUBJECT=mailto:support@event-transport.com
+```
+
+### Generate VAPID Keys
+
+```bash
+npm install -g web-push
+web-push generate-vapid-keys
+```
+
+## Event Image Upload Notes
+
+- Admin uploads image via event modal.
+- Backend saves images to `uploads/events`.
+- Files are served from `/uploads/events/**`.
+- Stored URL is persisted in `EventItinerary.imageUrl`.
+
+## Seed Data
+
+On first run, the backend seeds:
+
+- 1 main venue
+- 30 hotels + `Others`
+- 40 cabs
+- 9 sample events
+- location distances from main venue
+- default event images (seed URLs)
+- default admin config (`admin.name`, `admin.phone`)
 
 ## Deployment
 
-### Backend (Docker)
+### Backend (Docker example)
+
 ```bash
 cd backend
 docker build -t event-transport .
@@ -61,183 +311,18 @@ docker run -p 8080:8080 \
   -e DATABASE_URL=jdbc:postgresql://host:5432/dispatchdb \
   -e DB_USERNAME=user \
   -e DB_PASSWORD=pass \
+  -e VAPID_PUBLIC_KEY=... \
+  -e VAPID_PRIVATE_KEY=... \
+  -e VAPID_SUBJECT=mailto:support@event-transport.com \
   event-transport
 ```
 
-### Frontend
+### Frontend (production build)
+
 ```bash
 cd frontend
 echo "VITE_API_URL=https://your-backend-url" > .env.production
 npm run build
-# Deploy the dist/ folder to Netlify, S3+CloudFront, or any static host
 ```
 
-## Seed Data
-On first run, the backend auto-seeds:
-- 1 Main Venue (Grand Event Center)
-- 30 Hotels
-- 40 Cabs (KA-01-AB-1001 through KA-01-AB-1040)
-
-## Phase B: Notifications & SLA Alerts - Implementation Summary
-
-## Backend Changes
-
-### 1. Dependencies Added (pom.xml)
-- `nl.martijndwars:web-push:5.1.1` - Web Push library for VAPID
-- `com.google.code.gson:gson:2.8.9` - JSON serialization
-- `org.bouncycastle:bcpkix-jdk18on:1.78.1` - Cryptography library for web push
-- **BouncyCastle provider registered programmatically** in PushNotificationService
-
-### 2. New Entities
-- **PushSubscription.java** - Stores push notification subscriptions linked to users
-  - Fields: endpoint, p256dh, auth, userPhone, userType, subscribedAt
-  - Unique constraint on endpoint to prevent duplicates
-
-### 3. Updated Entities
-- **EventNotification.java** - Added `targetPhone` field for targeted alerts
-  - null = broadcast to all admins
-  - specific phone = targeted to driver
-
-### 4. New Services
-- **PushNotificationService.java** - Handles push notification delivery
-  - `subscribeUser()` - Register a user for push notifications
-  - `unsubscribeUser()` - Unregister a user
-  - `sendPushToAdmins()` - Send broadcast alerts to all admins
-  - `sendPushToDriver()` - Send targeted alerts to specific driver
-  - Automatic cleanup of invalid subscriptions
-
-- **SLAAlertService.java** - Scheduled SLA monitoring
-  - Runs every 1 minute (configurable)
-  - Checks for PENDING rides > 15 minutes
-  - Checks for OFFERED rides > 30 minutes
-  - Sends web push alerts to all ADMIN users when violations detected
-
-### 5. Updated Services
-- **DispatchService.java** 
-  - Added `cancelAcceptedRide()` method
-  - Sends targeted notification to driver when their accepted ride is cancelled
-  - Triggers push notification immediately
-
-### 6. New Controllers
-- **PushSubscriptionController.java** - REST endpoints for push management
-  - `POST /api/v1/push/subscribe` - Register push subscription
-  - `POST /api/v1/push/unsubscribe` - Unregister push subscription
-  - `GET /api/v1/push/vapid-public-key` - Get VAPID public key for frontend
-
-### 7. Repository
-- **PushSubscriptionRepository.java** - Data access for push subscriptions
-  - Methods to find subscriptions by userType, userPhone, and endpoint
-
-### 8. Configuration
-- **application.properties** - Added VAPID and scheduling config
-  - `vapid.public-key` - Environment variable or config
-  - `vapid.private-key` - Environment variable or config
-  - `vapid.subject` - Service contact email
-  - Scheduler pool size: 10 threads
-  - Scheduler thread name prefix: `dispatch-scheduler-`
-
-### 9. Application Setup
-- **DispatchApplication.java** - Added `@EnableScheduling` annotation
-
-## Frontend Changes
-
-### 1. Service Worker Updates (public/sw.js)
-- Added push event listener to handle incoming notifications
-- Added notification click handler to focus app or open new window
-- Displays notifications with icon and badge
-
-### 2. New Push Notification Service (src/services/PushNotificationService.ts)
-- `initialize()` - Register service worker
-- `requestPermission()` - Request browser notification permission
-- `subscribeUser()` - Subscribe user to push notifications
-  - Fetches VAPID public key from server
-  - Subscribes to PushManager
-  - Sends subscription details to backend
-- Helper methods for VAPID key encoding/decoding
-
-### 3. Updated Driver Dashboard (src/pages/driver/DriverDashboard.tsx)
-- Import push notification service
-- Initialize push notifications on driver login
-- Auto-subscribe driver with phone and DRIVER type
-
-### 4. API Client Updates (src/api/client.ts)
-- Added push notification endpoints
-  - `subscribeToPush()` - Manual subscription
-  - `getVapidPublicKey()` - Fetch VAPID public key
-
-## Environment Setup
-
-### Required Environment Variables
-Create a `.ENV` file in the backend directory with:
-```bash
-VAPID_PUBLIC_KEY=<your_public_key>
-VAPID_PRIVATE_KEY=<your_private_key>
-VAPID_SUBJECT=mailto:support@event-transport.com
-```
-
-The application uses `dotenv-java` to automatically load environment variables from the `.ENV` file.
-
-### Generate VAPID Keys
-To generate VAPID keys, use web-push CLI or equivalent:
-```bash
-npm install -g web-push
-web-push generate-vapid-keys
-```
-
-### Alternative: System Environment Variables
-You can also set environment variables directly in your deployment environment:
-```bash
-export VAPID_PUBLIC_KEY=your_public_key
-export VAPID_PRIVATE_KEY=your_private_key
-export VAPID_SUBJECT=mailto:support@event-transport.com
-```
-
-## Alert Flow
-
-### 1. New Ride Request Alert (Admin)
-**When:** Guest creates a new ride request
-**Trigger:** `RideService.createRide()`
-**Recipients:** All admin users
-**Notification:** "New Ride Request" - "New ride request from [Guest Name] ([X] pax) needs assignment"
-
-### 2. Driver Assignment Alert (Driver)
-**When:** Admin assigns ride to a driver
-**Trigger:** `DispatchService.assignRides()`
-**Recipients:** Specific driver
-**Notification:** "New Ride Assignment" - "You have been assigned [X] ride(s) for pickup. Please check your dashboard."
-
-### 3. Guest Cancellation Alert (Admin + Driver)
-**When:** Guest cancels an accepted/dispatched ride
-**Trigger:** `RideService.cancelRide()`
-**Recipients:** All admins + assigned driver
-**Notifications:**
-- **Admin:** "Guest Cancelled Ride" - "Guest [Name] cancelled their accepted ride #[ID]"
-- **Driver:** "Ride Cancelled by Guest" - "Ride #[ID] was cancelled by the guest. You are now available."
-
-### 4. Admin Cancellation Alert (Driver)
-**When:** Admin cancels an accepted ride
-**Trigger:** `DispatchService.cancelAcceptedRide()`
-**Recipients:** Specific driver
-**Notification:** "Ride Cancelled" - "Ride #[ID] has been cancelled. You are now available for new assignments"
-
-### 5. SLA Violation Alerts (Admin)
-**When:** Rides exceed service level time limits
-**Trigger:** `SLAAlertService.checkSLAViolations()` (every 60 seconds)
-**Recipients:** All admin users
-**Types:**
-- **PENDING Alert:** Rides waiting > 15 minutes
-- **OFFERED Alert:** Rides offered > 30 minutes
-**Notification:** "SLA Violation Alert" - "Ride #[ID] has been in [STATUS] state for too long"
-
-## Key Features
-✅ VAPID Web Push implementation
-✅ User subscription management with phone-based targeting
-✅ Automatic SLA monitoring with cron jobs
-✅ **New ride request alerts for admins**
-✅ **Driver assignment notifications**
-✅ **Guest cancellation alerts (admin + driver)**
-✅ Targeted driver notifications on ride cancellation
-✅ Broadcast admin alerts for SLA violations
-✅ Service worker for push event handling
-✅ Automatic cleanup of invalid subscriptions
-✅ No UI changes required - minimal frontend integration
+Deploy `frontend/dist` to any static host (Netlify, S3 + CloudFront, etc.).

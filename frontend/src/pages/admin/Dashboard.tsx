@@ -2,14 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Car, Users, Clock, MapPin, CheckCircle2, AlertTriangle,
   RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award, Flag, Bell, BellRing,
-  Settings, Save, Phone, User, X
+  Settings, Save, Phone, User, X, MessageSquare, Gauge
 } from 'lucide-react';
 import {
   getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
-  getConfig, updateConfig,
-  type RideRequest, type Cab, type EventItinerary, type Location
+  getConfig, updateConfig, getCancelledRides, getCabAnalytics,
+  getComplaints, closeComplaint, createEvent, updateEvent, uploadEventImage,
+  type RideRequest, type Cab, type EventItinerary, type Location, type DriverAnalytics,
+  type Complaint, type CancelledQueueEntry
 } from '../../api/client';
-import api from '../../api/client';
 import { pushNotificationService } from '../../services/PushNotificationService';
 
 interface LocationGroup {
@@ -45,12 +46,26 @@ export default function Dashboard() {
   const [showFleet, setShowFleet] = useState(true);
   const [assignResult, setAssignResult] = useState<{ magicLinkId: string; otp: string } | null>(null);
   const [ongoingRides, setOngoingRides] = useState<RideRequest[]>([]);
+  const [cancelledRides, setCancelledRides] = useState<CancelledQueueEntry[]>([]);
   const [events, setEvents] = useState<EventItinerary[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [showEvents, setShowEvents] = useState(true);
+  const [showCancelledQueue, setShowCancelledQueue] = useState(false);
+  const [showComplaints, setShowComplaints] = useState(false);
   const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({ title: '', description: '', startTime: '', endTime: '', locationId: '', notifyGuests: false });
+  const [eventImageFile, setEventImageFile] = useState<File | null>(null);
+  const [uploadingEventImage, setUploadingEventImage] = useState(false);
+  const [eventImageError, setEventImageError] = useState('');
+  const [selectedCancelledDate, setSelectedCancelledDate] = useState(() => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+  });
+  const [eventForm, setEventForm] = useState({ title: '', description: '', imageUrl: '', startTime: '', endTime: '', locationId: '', notifyGuests: false });
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [analyticsModal, setAnalyticsModal] = useState<DriverAnalytics | null>(null);
+  const [loadingAnalyticsCabId, setLoadingAnalyticsCabId] = useState<number | null>(null);
   const [adminPushPermission, setAdminPushPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
   const [adminPushEnabled, setAdminPushEnabled] = useState(false);
   const [enablingAdminPush, setEnablingAdminPush] = useState(false);
@@ -65,9 +80,17 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [ridesRes, cabsRes, ongoingRes] = await Promise.allSettled([getPendingRides(), getCabs(), getOngoingRides()]);
+      const [ridesRes, cabsRes, ongoingRes, cancelledRes, complaintsRes] = await Promise.allSettled([
+        getPendingRides(),
+        getCabs(),
+        getOngoingRides(),
+        getCancelledRides(selectedCancelledDate),
+        getComplaints()
+      ]);
       if (cabsRes.status === 'fulfilled') setCabs(cabsRes.value.data);
       if (ongoingRes.status === 'fulfilled') setOngoingRides(ongoingRes.value.data);
+      if (cancelledRes.status === 'fulfilled') setCancelledRides(cancelledRes.value.data);
+      if (complaintsRes.status === 'fulfilled') setComplaints(complaintsRes.value.data);
       const ridesData = ridesRes.status === 'fulfilled' ? ridesRes.value.data : [];
 
       const now = new Date();
@@ -110,7 +133,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedCancelledDate]);
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -143,7 +166,7 @@ export default function Dashboard() {
       return;
     }
 
-    let permission = Notification.permission;
+    const permission = Notification.permission;
     setAdminPushPermission(permission);
 
     if (permission === 'granted') {
@@ -274,6 +297,7 @@ export default function Dashboard() {
   };
 
   const availableCabs = cabs.filter(c => c.status === 'AVAILABLE');
+  const openComplaintsCount = complaints.filter(c => c.status === 'OPEN').length;
   const selectedPaxCount = Array.from(selectedRides.values()).reduce((sum, pax) => sum + pax, 0);
   const selectedCab = cabs.find(c => c.id === selectedCabId);
   const isOverCapacity = selectedCab ? selectedPaxCount > selectedCab.capacity : false;
@@ -282,6 +306,35 @@ export default function Dashboard() {
     const totalSecs = Math.floor((Date.now() - new Date(requestedAt).getTime()) / 1000);
     if (totalSecs < 60) return `${totalSecs}s`;
     return `${Math.floor(totalSecs / 60)}m ${totalSecs % 60}s`;
+  };
+
+  const formatAcceptanceTime = (seconds: number) => {
+    if (!seconds || seconds <= 0) return 'N/A';
+    if (seconds < 60) return `${Math.round(seconds)} sec`;
+    const mins = Math.floor(seconds / 60);
+    const remSecs = Math.round(seconds % 60);
+    return `${mins}m ${remSecs}s`;
+  };
+
+  const openDriverAnalytics = async (cabId: number) => {
+    setLoadingAnalyticsCabId(cabId);
+    try {
+      const res = await getCabAnalytics(cabId);
+      setAnalyticsModal(res.data);
+    } catch {
+      alert('Failed to load driver analytics.');
+    } finally {
+      setLoadingAnalyticsCabId(null);
+    }
+  };
+
+  const handleCloseComplaint = async (complaintId: number) => {
+    try {
+      await closeComplaint(complaintId, settingsForm.adminName || 'admin');
+      await fetchData();
+    } catch {
+      alert('Failed to close complaint.');
+    }
   };
 
   if (loading) {
@@ -340,6 +393,17 @@ export default function Dashboard() {
                 </span>
               )}
               <span className="hidden sm:inline text-xs text-gray-500">Updated {lastRefresh.toLocaleTimeString()}</span>
+              <button
+                onClick={() => setShowComplaints((current) => !current)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 px-3 py-2 text-sm font-medium transition"
+                title="Complaints"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span className="hidden md:inline">Complaints</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${openComplaintsCount > 0 ? 'bg-yellow-900 text-yellow-300' : 'bg-gray-600 text-gray-200'}`}>
+                  {openComplaintsCount}
+                </span>
+              </button>
               <button onClick={fetchData} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition" title="Refresh">
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -399,13 +463,13 @@ export default function Dashboard() {
                     const destination = first.direction === 'TO_VENUE' ? 'Main Venue' : first.location.name;
                     return (
                         <div key={magicLink} className="bg-gray-800 rounded-xl overflow-hidden border-2 border-yellow-700/50">
-                          <div className="px-4 py-3 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
+                          <div className="px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-3 min-w-0">
                               <Car className="w-5 h-5 text-yellow-400" />
                               <span className="font-mono font-medium">{first.cab?.licensePlate || '—'}</span>
-                              <span className="text-gray-400">{first.cab?.driverName || '—'}</span>
+                              <span className="text-gray-400 truncate">{first.cab?.driverName || '—'}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[first.status] || STATUS_BADGE['PENDING']}`}>
                           {first.status.replace('_', ' ')}
                         </span>
@@ -423,7 +487,7 @@ export default function Dashboard() {
                                       alert('Failed to cancel one or more rides.');
                                     }
                                   }}
-                                  className="text-xs text-red-400 hover:text-red-300 font-medium border border-red-700/50 rounded px-2 py-0.5"
+                                  className="text-xs text-red-400 hover:text-red-300 font-medium border border-red-700/50 rounded px-2 py-0.5 whitespace-nowrap"
                                 >
                                   Cancel Trip
                                 </button>
@@ -454,6 +518,72 @@ export default function Dashboard() {
                   });
                 })()
             )}
+
+            {/* Cancelled Queue */}
+            <div className="bg-gray-800 rounded-xl border border-gray-700">
+              <div className="px-4 py-3 flex items-center justify-between gap-3">
+                <button
+                  onClick={() => setShowCancelledQueue(!showCancelledQueue)}
+                  className="flex-1 flex items-center justify-between hover:bg-gray-750 transition rounded-xl"
+                >
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <X className="w-4 h-4 text-red-400" />
+                    Cancelled Queue ({cancelledRides.length})
+                  </h3>
+                  {showCancelledQueue ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                <input
+                  type="date"
+                  value={selectedCancelledDate}
+                  onChange={(e) => setSelectedCancelledDate(e.target.value)}
+                  className="mr-2 rounded-md border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-200 outline-none"
+                />
+              </div>
+              {showCancelledQueue && (
+                <div className="px-4 pb-4 space-y-2 max-h-64 overflow-y-auto">
+                  {cancelledRides.length === 0 ? (
+                    <p className="text-sm text-gray-500">No cancelled or declined rides for this day.</p>
+                  ) : cancelledRides.map((ride) => (
+                    <div key={ride.id} className="bg-gray-700/50 rounded-lg p-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-gray-200 truncate">{ride.guestName} ({ride.passengerCount} pax)</p>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${ride.incidentType === 'GUEST_CANCELLED' ? 'bg-red-900 text-red-300' : 'bg-orange-900 text-orange-300'}`}>
+                            {ride.incidentType === 'GUEST_CANCELLED' ? 'Guest Cancelled' : 'Driver Declined'}
+                          </span>
+                          <span className="text-xs text-gray-400">Ride #{ride.rideRequestId}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {ride.locationName} · {ride.direction === 'TO_VENUE' ? 'To Venue' : 'To Hotel'}
+                      </p>
+                      {ride.customDestination && (
+                        <p className="text-xs text-amber-300 mt-1">Custom destination: {ride.customDestination}</p>
+                      )}
+                      {(ride.driverName || ride.cabLicensePlate) && (
+                        <div className="mt-1 rounded-md bg-gray-800/70 px-2 py-1.5 text-xs text-gray-300 space-y-0.5">
+                          <p>
+                            Driver: <span className="text-gray-100 font-medium">{ride.driverName}</span>
+                            {ride.cabLicensePlate && (
+                              <span className="text-gray-400"> · {ride.cabLicensePlate}</span>
+                            )}
+                          </p>
+                          {ride.driverPhone && (
+                            <p className="text-gray-400">Phone: {ride.driverPhone}</p>
+                          )}
+                        </div>
+                      )}
+                      {(ride.driverDeniedCount ?? 0) > 0 && ride.incidentType === 'DRIVER_DECLINED' && (
+                        <p className="text-xs text-orange-300 mt-1">Declined {ride.driverDeniedCount ?? 0} time{(ride.driverDeniedCount ?? 0) > 1 ? 's' : ''}</p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        {new Date(ride.occurredAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Ride Queue */}
             <h2 className="text-lg font-semibold flex items-center gap-2 mt-6">
@@ -509,7 +639,7 @@ export default function Dashboard() {
                       return (
                           <label
                               key={ride.id}
-                              className={`flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-750 transition ${
+                              className={`flex flex-wrap items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-750 transition ${
                                   waitMins >= 15 ? 'bg-red-900/20' : ''
                               }`}
                           >
@@ -520,9 +650,9 @@ export default function Dashboard() {
                                 className="w-5 h-5 mt-0.5 rounded border-gray-600 text-blue-500 focus:ring-blue-500 bg-gray-700"
                             />
                             <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
                                 <span className="font-medium truncate">{ride.guestName}</span>
-                                <span className="text-gray-400 text-sm">{ride.guestPhone}</span>
+                                <span className="text-gray-400 text-sm truncate">{ride.guestPhone}</span>
                               </div>
                               <div className="flex items-center gap-3 text-sm text-gray-400">
                                 <span>{ride.passengerCount} pax</span>
@@ -540,7 +670,7 @@ export default function Dashboard() {
                                   </div>
                               )}
                             </div>
-                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            <div className="w-full pl-8 flex items-center justify-between gap-2 sm:w-auto sm:pl-0 sm:flex-col sm:items-end sm:justify-start">
                         <span className={`text-sm font-mono font-bold ${
                             waitMins >= 15 ? 'text-red-400 animate-pulse' :
                                 waitMins >= 10 ? 'text-orange-400' :
@@ -649,7 +779,13 @@ export default function Dashboard() {
                         >
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-medium">{cab.licensePlate}</span>
-                            <span className="text-gray-400">{cab.driverName}</span>
+                            <button
+                              onClick={() => openDriverAnalytics(cab.id)}
+                              className="text-blue-300 hover:text-blue-200 underline-offset-2 hover:underline disabled:opacity-50"
+                              disabled={loadingAnalyticsCabId === cab.id}
+                            >
+                              {loadingAnalyticsCabId === cab.id ? 'Loading...' : cab.driverName}
+                            </button>
                             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-300 text-xs font-medium">
                         <Award className="w-3 h-3" />
                               {cab.tripsCompleted}
@@ -657,6 +793,10 @@ export default function Dashboard() {
                             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-900/40 text-red-300 text-xs font-medium">
                         <AlertTriangle className="w-3 h-3" />
                               {cab.tripsDenied ?? 0}
+                      </span>
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300 text-xs font-medium">
+                        <Gauge className="w-3 h-3" />
+                              {(cab.totalKm ?? 0).toFixed(1)} km
                       </span>
                           </div>
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -669,6 +809,57 @@ export default function Dashboard() {
                         </div>
                     ))}
                   </div>
+              )}
+            </div>
+
+            {/* Event Management */}
+            <div className="bg-gray-800 rounded-xl border border-gray-700">
+              <button
+                onClick={() => setShowComplaints(!showComplaints)}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-750 transition rounded-xl"
+              >
+                <h3 className="font-semibold flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-blue-400" />
+                  Complaints ({complaints.length})
+                </h3>
+                {showComplaints ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              {showComplaints && (
+                <div className="px-4 pb-4 space-y-2 max-h-72 overflow-y-auto">
+                  {complaints.length === 0 ? (
+                    <p className="text-sm text-gray-500">No complaints filed.</p>
+                  ) : complaints.map((complaint) => (
+                    <div key={complaint.id} className="bg-gray-700/50 rounded-lg p-3 text-sm space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-gray-200 truncate">{complaint.guestName}</p>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          complaint.status === 'OPEN' ? 'bg-yellow-900 text-yellow-300' : 'bg-green-900 text-green-300'
+                        }`}>
+                          {complaint.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400">{complaint.guestPhone}</p>
+                      <p className="text-sm text-gray-300">{complaint.message}</p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(complaint.createdAt).toLocaleString()}
+                        {complaint.rideRequest ? ` · Ride #${complaint.rideRequest.id}` : ''}
+                      </p>
+                      {complaint.status === 'OPEN' && (
+                        <button
+                          onClick={() => handleCloseComplaint(complaint.id)}
+                          className="text-xs text-green-400 hover:text-green-300 font-medium"
+                        >
+                          Close Complaint
+                        </button>
+                      )}
+                      {complaint.status === 'CLOSED' && complaint.closedAt && (
+                        <p className="text-xs text-gray-500">
+                          Closed {new Date(complaint.closedAt).toLocaleString()} by {complaint.closedBy || 'admin'}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
@@ -689,61 +880,14 @@ export default function Dashboard() {
                     <button
                         onClick={() => {
                           setShowEventForm(true); setEditingEventId(null);
-                          setEventForm({ title: '', description: '', startTime: '', endTime: '', locationId: locations[0]?.id?.toString() || '', notifyGuests: false });
+                          setEventImageFile(null);
+                          setEventImageError('');
+                          setEventForm({ title: '', description: '', imageUrl: '', startTime: '', endTime: '', locationId: locations[0]?.id?.toString() || '', notifyGuests: false });
                         }}
                         className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition"
                     >
                       + Add Event
                     </button>
-                    {showEventForm && (
-                        <div className="bg-gray-700 rounded-lg p-3 space-y-2">
-                          <input value={eventForm.title} onChange={e => setEventForm(f => ({...f, title: e.target.value}))} placeholder="Event Title" className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white placeholder-gray-400 outline-none" />
-                          <input value={eventForm.description} onChange={e => setEventForm(f => ({...f, description: e.target.value}))} placeholder="Description (optional)" className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white placeholder-gray-400 outline-none" />
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-xs text-gray-400">Start date</label>
-                              <input type="date" value={getDatePart(eventForm.startTime)} onChange={e => updateEventDateTime('startTime', 'date', e.target.value)} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-400">Start time</label>
-                              <input type="time" value={getTimePart(eventForm.startTime)} onChange={e => updateEventDateTime('startTime', 'time', e.target.value)} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-xs text-gray-400">End date</label>
-                              <input type="date" value={getDatePart(eventForm.endTime)} onChange={e => updateEventDateTime('endTime', 'date', e.target.value)} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-400">End time</label>
-                              <input type="time" value={getTimePart(eventForm.endTime)} onChange={e => updateEventDateTime('endTime', 'time', e.target.value)} className="w-full py-2 px-2 bg-gray-600 rounded text-sm text-white outline-none" />
-                            </div>
-                          </div>
-                          <select value={eventForm.locationId} onChange={e => setEventForm(f => ({...f, locationId: e.target.value}))} className="w-full py-2 px-3 bg-gray-600 rounded text-sm text-white outline-none">
-                            {locations.filter(l => l.isMainVenue).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                          </select>
-                          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-                            <input type="checkbox" checked={eventForm.notifyGuests} onChange={e => setEventForm(f => ({...f, notifyGuests: e.target.checked}))} className="rounded bg-gray-600 border-gray-500" />
-                            Notify all guests (push notification)
-                          </label>
-                          <div className="flex gap-2">
-                            <button
-                                onClick={async () => {
-                                  const payload = { title: eventForm.title, description: eventForm.description || null, startTime: eventForm.startTime, endTime: eventForm.endTime, locationId: Number(eventForm.locationId), notifyGuests: eventForm.notifyGuests };
-                                  try {
-                                    if (editingEventId) { await api.put(`/api/v1/events/${editingEventId}`, payload); }
-                                    else { await api.post('/api/v1/events', payload); }
-                                    setShowEventForm(false); fetchEvents();
-                                  } catch { alert('Failed to save event'); }
-                                }}
-                                className="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition"
-                            >
-                              Save
-                            </button>
-                            <button onClick={() => setShowEventForm(false)} className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm font-medium transition">Cancel</button>
-                          </div>
-                        </div>
-                    )}
                     <div className="max-h-64 overflow-y-auto space-y-1">
                       {events.map(ev => (
                           <div key={ev.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-700/50 text-sm">
@@ -758,7 +902,9 @@ export default function Dashboard() {
                             <button
                                 onClick={() => {
                                   setEditingEventId(ev.id);
-                                  setEventForm({ title: ev.title, description: ev.description || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString(), notifyGuests: false });
+                                  setEventImageFile(null);
+                                  setEventImageError('');
+                                  setEventForm({ title: ev.title, description: ev.description || '', imageUrl: ev.imageUrl || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString(), notifyGuests: false });
                                   setShowEventForm(true);
                                 }}
                                 className="text-xs text-blue-400 hover:text-blue-300"
@@ -774,6 +920,185 @@ export default function Dashboard() {
 
           </div>
         </div>
+
+      {showEventForm && (
+        <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center">
+          <div className="w-full max-w-2xl bg-gray-800 border border-gray-700 rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="font-semibold">{editingEventId ? 'Edit Event' : 'Add Event'}</h3>
+              <button
+                onClick={() => {
+                  setShowEventForm(false);
+                  setEventImageFile(null);
+                  setEventImageError('');
+                }}
+                className="p-1.5 rounded hover:bg-gray-700 transition"
+              >
+                <X className="w-4 h-4 text-gray-300" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <input
+                value={eventForm.title}
+                onChange={e => setEventForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Event Title"
+                className="w-full py-2 px-3 bg-gray-700 rounded text-sm text-white placeholder-gray-400 outline-none"
+              />
+              <textarea
+                value={eventForm.description}
+                onChange={e => setEventForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Description / more info"
+                rows={4}
+                className="w-full py-2 px-3 bg-gray-700 rounded text-sm text-white placeholder-gray-400 outline-none"
+              />
+              <div className="rounded-lg border border-gray-600 p-3 space-y-2">
+                <p className="text-xs text-gray-400">Event image</p>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(e) => {
+                    setEventImageFile(e.target.files?.[0] || null);
+                    setEventImageError('');
+                  }}
+                  className="w-full text-xs text-gray-300 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white hover:file:bg-blue-500"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!eventImageFile) return;
+                      setUploadingEventImage(true);
+                      setEventImageError('');
+                      try {
+                        const res = await uploadEventImage(eventImageFile);
+                        setEventForm((f) => ({ ...f, imageUrl: res.data.imageUrl }));
+                      } catch {
+                        setEventImageError('Failed to upload image. Please try again.');
+                      } finally {
+                        setUploadingEventImage(false);
+                      }
+                    }}
+                    disabled={!eventImageFile || uploadingEventImage}
+                    className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                  >
+                    {uploadingEventImage ? 'Uploading...' : 'Upload Image'}
+                  </button>
+                  {eventForm.imageUrl && <span className="text-xs text-green-400">Uploaded</span>}
+                </div>
+                {eventImageError && <p className="text-xs text-red-400">{eventImageError}</p>}
+                {eventForm.imageUrl && (
+                  <img src={eventForm.imageUrl} alt="Event preview" className="h-24 w-full object-cover rounded-md border border-gray-600" />
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-400">Start date</label>
+                  <input type="date" value={getDatePart(eventForm.startTime)} onChange={e => updateEventDateTime('startTime', 'date', e.target.value)} className="w-full py-2 px-2 bg-gray-700 rounded text-sm text-white outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400">Start time</label>
+                  <input type="time" value={getTimePart(eventForm.startTime)} onChange={e => updateEventDateTime('startTime', 'time', e.target.value)} className="w-full py-2 px-2 bg-gray-700 rounded text-sm text-white outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-400">End date</label>
+                  <input type="date" value={getDatePart(eventForm.endTime)} onChange={e => updateEventDateTime('endTime', 'date', e.target.value)} className="w-full py-2 px-2 bg-gray-700 rounded text-sm text-white outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400">End time</label>
+                  <input type="time" value={getTimePart(eventForm.endTime)} onChange={e => updateEventDateTime('endTime', 'time', e.target.value)} className="w-full py-2 px-2 bg-gray-700 rounded text-sm text-white outline-none" />
+                </div>
+              </div>
+              <select value={eventForm.locationId} onChange={e => setEventForm(f => ({ ...f, locationId: e.target.value }))} className="w-full py-2 px-3 bg-gray-700 rounded text-sm text-white outline-none">
+                {locations.filter(l => l.isMainVenue).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                <input type="checkbox" checked={eventForm.notifyGuests} onChange={e => setEventForm(f => ({ ...f, notifyGuests: e.target.checked }))} className="rounded bg-gray-700 border-gray-500" />
+                Notify all guests (push notification)
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const payload = {
+                      title: eventForm.title,
+                      description: eventForm.description || null,
+                      imageUrl: eventForm.imageUrl || null,
+                      startTime: eventForm.startTime,
+                      endTime: eventForm.endTime,
+                      locationId: Number(eventForm.locationId),
+                      notifyGuests: eventForm.notifyGuests
+                    };
+                    try {
+                      if (editingEventId) {
+                        await updateEvent(editingEventId, payload);
+                      } else {
+                        await createEvent(payload);
+                      }
+                      setShowEventForm(false);
+                      setEventImageFile(null);
+                      setEventImageError('');
+                      await fetchEvents();
+                    } catch {
+                      alert('Failed to save event');
+                    }
+                  }}
+                  className="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEventForm(false);
+                    setEventImageFile(null);
+                    setEventImageError('');
+                  }}
+                  className="flex-1 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm font-medium transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {analyticsModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center">
+          <div className="w-full max-w-md bg-gray-800 border border-gray-700 rounded-xl shadow-2xl">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="font-semibold">Driver Analytics</h3>
+              <button onClick={() => setAnalyticsModal(null)} className="p-1.5 rounded hover:bg-gray-700 transition">
+                <X className="w-4 h-4 text-gray-300" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2 text-sm">
+              <p className="text-gray-200 font-medium">{analyticsModal.driverName}</p>
+              <p className="text-gray-400">{analyticsModal.licensePlate}</p>
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <div className="bg-gray-700 rounded p-2">
+                  <p className="text-xs text-gray-400">Total Km</p>
+                  <p className="text-lg font-semibold text-blue-300">{(analyticsModal.totalKm ?? 0).toFixed(1)}</p>
+                </div>
+                <div className="bg-gray-700 rounded p-2">
+                  <p className="text-xs text-gray-400">Avg Acceptance</p>
+                  <p className="text-lg font-semibold text-green-300">{formatAcceptanceTime(analyticsModal.averageAcceptanceTimeSeconds)}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="bg-gray-700 rounded p-2">
+                  <p className="text-xs text-gray-400">Trips Completed</p>
+                  <p className="text-lg font-semibold text-purple-300">{analyticsModal.tripsCompleted}</p>
+                </div>
+                <div className="bg-gray-700 rounded p-2">
+                  <p className="text-xs text-gray-400">Trips Denied</p>
+                  <p className="text-lg font-semibold text-red-300">{analyticsModal.tripsDenied}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSettings && (
         <div className="fixed inset-0 z-50 bg-black/60 p-4 flex items-center justify-center">

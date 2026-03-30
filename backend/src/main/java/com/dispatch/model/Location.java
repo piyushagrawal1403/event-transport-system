@@ -16,11 +16,21 @@ public class Location {
     @Column(nullable = false)
     private Boolean isMainVenue = false;
 
+    @Column
+    private Double distanceFromMainVenue = 0.0;
+
     public Location() {}
 
     public Location(String name, Boolean isMainVenue) {
         this.name = name;
         this.isMainVenue = isMainVenue;
+        this.distanceFromMainVenue = 0.0;
+    }
+
+    public Location(String name, Boolean isMainVenue, Double distanceFromMainVenue) {
+        this.name = name;
+        this.isMainVenue = isMainVenue;
+        this.distanceFromMainVenue = distanceFromMainVenue == null ? 0.0 : Math.max(0.0, distanceFromMainVenue);
     }
 
     public Long getId() { return id; }
@@ -31,4 +41,9 @@ public class Location {
 
     public Boolean getIsMainVenue() { return isMainVenue; }
     public void setIsMainVenue(Boolean isMainVenue) { this.isMainVenue = isMainVenue; }
+
+    public Double getDistanceFromMainVenue() { return distanceFromMainVenue; }
+    public void setDistanceFromMainVenue(Double distanceFromMainVenue) {
+        this.distanceFromMainVenue = distanceFromMainVenue == null ? 0.0 : Math.max(0.0, distanceFromMainVenue);
+    }
 }

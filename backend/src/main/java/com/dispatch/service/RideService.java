@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.List;
+import java.time.LocalDate;
 
 @Service
 public class RideService {
@@ -18,15 +19,18 @@ public class RideService {
     private final LocationRepository locationRepository;
     private final CabRepository cabRepository;
     private final PushNotificationService pushNotificationService;
+    private final RideIncidentService rideIncidentService;
 
     public RideService(RideRequestRepository rideRequestRepository,
                        LocationRepository locationRepository,
                        CabRepository cabRepository,
-                       PushNotificationService pushNotificationService) {
+                       PushNotificationService pushNotificationService,
+                       RideIncidentService rideIncidentService) {
         this.rideRequestRepository = rideRequestRepository;
         this.locationRepository = locationRepository;
         this.cabRepository = cabRepository;
         this.pushNotificationService = pushNotificationService;
+        this.rideIncidentService = rideIncidentService;
     }
 
     @Transactional
@@ -108,6 +112,10 @@ public class RideService {
         return rideRequestRepository.findByCabIdAndStatus(cabId, RideStatus.COMPLETED);
     }
 
+    public List<RideIncident> getCancelledRides(LocalDate date) {
+        return rideIncidentService.getIncidentsForDate(date);
+    }
+
     @Transactional
     public RideRequest cancelRide(Long rideId) {
         RideRequest ride = rideRequestRepository.findById(rideId)
@@ -144,6 +152,8 @@ public class RideService {
                 }
             }
         }
+
+        rideIncidentService.recordGuestCancelled(ride);
 
         ride.setStatus(RideStatus.CANCELLED);
 

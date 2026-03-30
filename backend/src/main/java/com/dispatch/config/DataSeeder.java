@@ -46,7 +46,7 @@ public class DataSeeder implements CommandLineRunner {
         }
 
         // Main venue
-        locationRepository.save(new Location("Grand Event Center", true));
+        locationRepository.save(new Location("Grand Event Center", true, 0.0));
 
         // Hotels
         String[] hotels = {
@@ -62,12 +62,14 @@ public class DataSeeder implements CommandLineRunner {
                 "Conrad", "Waldorf Astoria", "Peninsula Hotel"
         };
 
-        for (String hotel : hotels) {
-            locationRepository.save(new Location(hotel, false));
+        for (int i = 0; i < hotels.length; i++) {
+            // Seed realistic one-way distances in km from the main venue.
+            double distanceKm = 2.0 + ((i % 10) * 0.8);
+            locationRepository.save(new Location(hotels[i], false, distanceKm));
         }
 
         // "Others" escape-hatch — guests fill in a custom destination at booking time
-        locationRepository.save(new Location("Others", false));
+        locationRepository.save(new Location("Others", false, 0.0));
 
         // 40 drivers
         String[] driverFirstNames = {
@@ -95,26 +97,27 @@ public class DataSeeder implements CommandLineRunner {
             LocalDate today = LocalDate.now();
             LocalDate tomorrow = today.plusDays(1);
 
-            seedEvent("Registration & Welcome Kit", "Pick up your badge and welcome kit", venue, today, LocalTime.of(8, 0), LocalTime.of(10, 0));
-            seedEvent("Opening Ceremony", "Keynote address and event kickoff", venue, today, LocalTime.of(10, 0), LocalTime.of(11, 30));
-            seedEvent("Networking Lunch", "Buffet lunch and networking session", venue, today, LocalTime.of(12, 0), LocalTime.of(13, 30));
-            seedEvent("Panel Discussion: Future of Tech", "Industry leaders share insights", venue, today, LocalTime.of(14, 0), LocalTime.of(15, 30));
-            seedEvent("Workshop: Hands-on AI", "Interactive AI/ML workshop", venue, today, LocalTime.of(16, 0), LocalTime.of(17, 30));
-            seedEvent("Gala Dinner", "Formal dinner with live entertainment", venue, today, LocalTime.of(19, 0), LocalTime.of(22, 0));
+            seedEvent("Registration & Welcome Kit", "Pick up your badge and welcome kit", "https://picsum.photos/seed/event-registration/1200/700", venue, today, LocalTime.of(8, 0), LocalTime.of(10, 0));
+            seedEvent("Opening Ceremony", "Keynote address and event kickoff", "https://picsum.photos/seed/event-opening/1200/700", venue, today, LocalTime.of(10, 0), LocalTime.of(11, 30));
+            seedEvent("Networking Lunch", "Buffet lunch and networking session", "https://picsum.photos/seed/event-lunch/1200/700", venue, today, LocalTime.of(12, 0), LocalTime.of(13, 30));
+            seedEvent("Panel Discussion: Future of Tech", "Industry leaders share insights", "https://picsum.photos/seed/event-panel/1200/700", venue, today, LocalTime.of(14, 0), LocalTime.of(15, 30));
+            seedEvent("Workshop: Hands-on AI", "Interactive AI/ML workshop", "https://picsum.photos/seed/event-workshop/1200/700", venue, today, LocalTime.of(16, 0), LocalTime.of(17, 30));
+            seedEvent("Gala Dinner", "Formal dinner with live entertainment", "https://picsum.photos/seed/event-dinner/1200/700", venue, today, LocalTime.of(19, 0), LocalTime.of(22, 0));
 
-            seedEvent("Breakfast Meetup", "Morning coffee and pastries", venue, tomorrow, LocalTime.of(8, 30), LocalTime.of(9, 30));
-            seedEvent("Hackathon Finals", "Top teams present their projects", venue, tomorrow, LocalTime.of(10, 0), LocalTime.of(13, 0));
-            seedEvent("Closing Ceremony & Awards", "Award ceremony and closing remarks", venue, tomorrow, LocalTime.of(14, 0), LocalTime.of(16, 0));
+            seedEvent("Breakfast Meetup", "Morning coffee and pastries", "https://picsum.photos/seed/event-breakfast/1200/700", venue, tomorrow, LocalTime.of(8, 30), LocalTime.of(9, 30));
+            seedEvent("Hackathon Finals", "Top teams present their projects", "https://picsum.photos/seed/event-hackathon/1200/700", venue, tomorrow, LocalTime.of(10, 0), LocalTime.of(13, 0));
+            seedEvent("Closing Ceremony & Awards", "Award ceremony and closing remarks", "https://picsum.photos/seed/event-closing/1200/700", venue, tomorrow, LocalTime.of(14, 0), LocalTime.of(16, 0));
         }
 
         System.out.println("Seeded: 1 venue, 30 hotels, 1 Others location, 40 cabs, 9 events");
         System.out.println("Admin settings editable from the Admin Dashboard → Settings panel.");
     }
 
-    private void seedEvent(String title, String description, Location location, LocalDate date, LocalTime start, LocalTime end) {
+    private void seedEvent(String title, String description, String imageUrl, Location location, LocalDate date, LocalTime start, LocalTime end) {
         EventItinerary event = new EventItinerary();
         event.setTitle(title);
         event.setDescription(description);
+        event.setImageUrl(imageUrl);
         event.setLocation(location);
         event.setStartTime(LocalDateTime.of(date, start));
         event.setEndTime(LocalDateTime.of(date, end));

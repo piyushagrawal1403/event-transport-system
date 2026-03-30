@@ -18,14 +18,17 @@ public class DispatchService {
     private final RideRequestRepository rideRequestRepository;
     private final EventNotificationRepository eventNotificationRepository;
     private final PushNotificationService pushNotificationService;
+    private final RideIncidentService rideIncidentService;
 
     public DispatchService(CabRepository cabRepository, RideRequestRepository rideRequestRepository,
                           EventNotificationRepository eventNotificationRepository,
-                          PushNotificationService pushNotificationService) {
+                          PushNotificationService pushNotificationService,
+                          RideIncidentService rideIncidentService) {
         this.cabRepository = cabRepository;
         this.rideRequestRepository = rideRequestRepository;
         this.eventNotificationRepository = eventNotificationRepository;
         this.pushNotificationService = pushNotificationService;
+        this.rideIncidentService = rideIncidentService;
     }
 
     // ── Assign (Admin → Driver) ───────────────────────────────────────────────
@@ -73,6 +76,9 @@ public class DispatchService {
         for (RideRequest ride : rides) {
             ride.setStatus(RideStatus.OFFERED);   // ← was ASSIGNED
             ride.setCab(cab);
+            ride.setLastAssignedDriverName(cab.getDriverName());
+            ride.setLastAssignedDriverPhone(cab.getDriverPhone());
+            ride.setLastAssignedCabLicensePlate(cab.getLicensePlate());
             ride.setDropoffOtp(otp);
             ride.setMagicLinkId(magicLinkId);
             ride.setAssignedAt(now);
@@ -169,6 +175,7 @@ public class DispatchService {
 
         List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
         for (RideRequest r : batch) {
+            rideIncidentService.recordDriverDeclined(r, cab);
             r.setStatus(RideStatus.PENDING);
             r.setDriverDeniedCount((r.getDriverDeniedCount() == null ? 0 : r.getDriverDeniedCount()) + 1);
             r.setCab(null);
@@ -256,13 +263,23 @@ public class DispatchService {
         }
 
         Cab cab = ride.getCab();
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+
+        double completedBatchDistanceKm = batch.stream()
+                .map(RideRequest::getLocation)
+                .filter(Objects::nonNull)
+                .map(Location::getDistanceFromMainVenue)
+                .filter(Objects::nonNull)
+                .mapToDouble(d -> Math.max(0.0, d))
+                .sum();
+
         if (cab != null) {
             cab.setStatus(CabStatus.AVAILABLE);
             cab.setTripsCompleted(cab.getTripsCompleted() + 1);
+            cab.setTotalKm((cab.getTotalKm() == null ? 0.0 : cab.getTotalKm()) + completedBatchDistanceKm);
             cabRepository.save(cab);
         }
 
-        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.COMPLETED);
         }

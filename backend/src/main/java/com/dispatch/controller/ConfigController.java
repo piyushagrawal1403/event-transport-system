@@ -9,7 +9,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/config")
-@CrossOrigin(origins = "*")
 public class ConfigController {
 
     private final AppSettingRepository settingRepository;

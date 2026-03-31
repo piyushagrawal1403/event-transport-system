@@ -6,14 +6,20 @@ import com.dispatch.model.ComplaintStatus;
 import com.dispatch.model.RideRequest;
 import com.dispatch.repository.ComplaintRepository;
 import com.dispatch.repository.RideRequestRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
 public class ComplaintService {
+
+    private static final Logger log = LoggerFactory.getLogger(ComplaintService.class);
 
     private final ComplaintRepository complaintRepository;
     private final RideRequestRepository rideRequestRepository;
@@ -40,11 +46,18 @@ public class ComplaintService {
         return complaintRepository.save(complaint);
     }
 
-    public List<Complaint> getComplaints(ComplaintStatus status) {
-        if (status == null) {
-            return complaintRepository.findAllByOrderByCreatedAtDesc();
+    public List<Complaint> getComplaints(ComplaintStatus status, LocalDate date) {
+        if (date == null) {
+            if (status == null) {
+                return complaintRepository.findAllByOrderByCreatedAtDesc();
+            }
+            return complaintRepository.findByStatusOrderByCreatedAtDesc(status);
         }
-        return complaintRepository.findByStatusOrderByCreatedAtDesc(status);
+
+        ZoneId zoneId = ZoneId.systemDefault();
+        Instant start = date.atStartOfDay(zoneId).toInstant();
+        Instant end = date.plusDays(1).atStartOfDay(zoneId).toInstant();
+        return complaintRepository.findForAdminFilters(status, start, end);
     }
 
     @Transactional
@@ -59,6 +72,7 @@ public class ComplaintService {
         complaint.setStatus(ComplaintStatus.CLOSED);
         complaint.setClosedAt(Instant.now());
         complaint.setClosedBy((closedBy == null || closedBy.isBlank()) ? "admin" : closedBy.trim());
+        log.info("action=complaint_closed complaintId={} closedBy='{}'", complaint.getId(), complaint.getClosedBy());
         return complaintRepository.save(complaint);
     }
 

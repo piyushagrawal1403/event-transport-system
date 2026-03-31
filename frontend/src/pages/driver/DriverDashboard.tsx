@@ -1,23 +1,27 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Car, Phone, LogIn, Navigation, MapPin, ChevronDown, ChevronUp,
+  Car, Phone, Navigation, MapPin, ChevronDown, ChevronUp,
   Award, Clock, CheckCircle, XCircle, KeyRound, Flag
 } from 'lucide-react';
 import {
   getCabs, getCabActiveRides, getCabCompletedRides, updateCabStatus,
   acceptRide, denyRide, markArrived, startTrip, completeTrip, getConfig,
+  isUnauthorizedError,
   type Cab, type RideRequest
 } from '../../api/client';
+import { clearAuthSession, getDriverPhone } from '../../lib/auth';
 import { pushNotificationService } from '../../services/PushNotificationService';
 
 export default function DriverDashboard() {
-  const [phone, setPhone] = useState('');
-  const [loggedIn, setLoggedIn] = useState(false);
+  const navigate = useNavigate();
+  const phone = getDriverPhone();
   const [myCab, setMyCab] = useState<Cab | null>(null);
   const [activeTrips, setActiveTrips] = useState<RideRequest[]>([]);
   const [completedRides, setCompletedRides] = useState<RideRequest[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
+  const [unauthorized, setUnauthorized] = useState(false);
 
   // Accept / Deny modal
   const [consentRide, setConsentRide] = useState<RideRequest | null>(null);
@@ -52,12 +56,7 @@ export default function DriverDashboard() {
   };
 
   useEffect(() => {
-    const savedPhone = localStorage.getItem('driverPhone');
-    if (savedPhone) { setPhone(savedPhone); setLoggedIn(true); }
-  }, []);
-
-  useEffect(() => {
-    if (!loggedIn || !phone) return;
+    if (!phone) return;
 
     let active = true;
     const ensureDriverPushSubscription = async () => {
@@ -85,14 +84,15 @@ export default function DriverDashboard() {
 
     ensureDriverPushSubscription();
     return () => { active = false; };
-  }, [loggedIn, phone]);
+  }, [phone]);
 
   useEffect(() => {
-    if (!loggedIn) return;
+    if (!phone) return;
 
     const fetchCabs = async () => {
       try {
         const { data: cabs } = await getCabs();
+        setUnauthorized(false);
         const sanitizedInput = sanitizePhone(phone);
         const found = cabs.find(c => sanitizePhone(c.driverPhone) === sanitizedInput);
         setMyCab(found || null);
@@ -111,43 +111,18 @@ export default function DriverDashboard() {
           setActiveTrips([]);
           setCompletedRides([]);
         }
-      } catch { /* retry */ }
+      } catch (error) {
+        if (isUnauthorizedError(error)) {
+          setUnauthorized(true);
+        }
+      }
     };
 
     fetchCabs();
     const interval = setInterval(fetchCabs, 8000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedIn, phone]);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (phone.trim()) {
-      const sanitized = sanitizePhone(phone.trim());
-
-      let permissionGranted = false;
-      try {
-        permissionGranted = await pushNotificationService.requestPermission();
-        if (permissionGranted) {
-          await pushNotificationService.subscribeUser(sanitized, 'DRIVER', {
-            permissionAlreadyGranted: true,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to enable push notifications during driver login:', error);
-      }
-
-      localStorage.setItem('driverPhone', sanitized);
-      setPhone(sanitized);
-      setLoggedIn(true);
-
-      if (!permissionGranted) {
-        window.setTimeout(() => {
-          alert('Push notifications were not enabled. For localhost testing, use a regular browser window instead of incognito/private mode and allow notifications for this site.');
-        }, 0);
-      }
-    }
-  };
+  }, [phone]);
 
   // ── Accept / Deny handlers ────────────────────────────────────────────────
 
@@ -258,39 +233,41 @@ export default function DriverDashboard() {
     }
   };
 
-  // ── Login screen ──────────────────────────────────────────────────────────
+  const handleToggleDuty = async () => {
+    if (!myCab || myCab.status === 'BUSY' || togglingStatus) {
+      return;
+    }
 
-  if (!loggedIn) {
+    const nextStatus = myCab.status === 'OFFLINE' ? 'AVAILABLE' : 'OFFLINE';
+    const previousStatus = myCab.status;
+    setTogglingStatus(true);
+    setMyCab({ ...myCab, status: nextStatus });
+
+    try {
+      await updateCabStatus(phone, nextStatus);
+    } catch (err) {
+      setMyCab({ ...myCab, status: previousStatus });
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update status';
+      alert(msg);
+    } finally {
+      setTogglingStatus(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await pushNotificationService.unsubscribeUser();
+    clearAuthSession();
+    navigate('/');
+  };
+
+  if (unauthorized) {
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 flex items-center justify-center p-4">
-          <div className="w-full max-w-md">
-            <div className="text-center mb-8">
-              <Car className="w-12 h-12 text-white mx-auto mb-3" />
-              <h1 className="text-2xl font-bold text-white">Driver Login</h1>
-              <p className="text-indigo-200 mt-1">Enter your registered phone number</p>
-            </div>
-            <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Enter your phone number"
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    required
-                />
-              </div>
-              <button
-                  type="submit"
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2"
-              >
-                <LogIn className="w-5 h-5" />
-                Login
-              </button>
-            </form>
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 flex items-center justify-center p-6">
+        <div className="max-w-md text-center text-white space-y-2">
+          <h2 className="text-xl font-semibold">Unauthorized</h2>
+          <p className="text-sm text-indigo-200">You do not have access to driver operations for this session.</p>
         </div>
+      </div>
     );
   }
 
@@ -434,8 +411,9 @@ export default function DriverDashboard() {
               {myCab && <p className="text-indigo-200 text-sm">{myCab.driverName} · {myCab.licensePlate}</p>}
             </div>
             <button
-                onClick={() => { localStorage.removeItem('driverPhone'); setLoggedIn(false); setPhone(''); }}
+                onClick={() => { void handleLogout(); }}
                 className="text-sm bg-indigo-700 hover:bg-indigo-800 px-3 py-1.5 rounded-lg transition"
+                type="button"
             >
               Logout
             </button>
@@ -466,25 +444,16 @@ export default function DriverDashboard() {
                     </div>
                     <button
                         disabled={myCab.status === 'BUSY' || togglingStatus}
-                        onClick={async () => {
-                          setTogglingStatus(true);
-                          try {
-                            const newStatus = myCab.status === 'OFFLINE' ? 'AVAILABLE' : 'OFFLINE';
-                            await updateCabStatus(phone, newStatus);
-                            setMyCab({ ...myCab, status: newStatus });
-                          } catch (err) {
-                            const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update status';
-                            alert(msg);
-                          } finally {
-                            setTogglingStatus(false);
-                          }
-                        }}
-                        className={`relative inline-flex items-center w-12 h-6 rounded-full transition ${
+                        onClick={() => { void handleToggleDuty(); }}
+                        className={`relative inline-flex h-8 w-14 touch-manipulation items-center rounded-full transition ${
                             myCab.status === 'BUSY' ? 'bg-gray-300 cursor-not-allowed' :
                                 myCab.status === 'OFFLINE' ? 'bg-gray-300' : 'bg-green-500'
                         }`}
+                        type="button"
+                        aria-label="Toggle duty status"
+                        aria-pressed={myCab.status !== 'OFFLINE'}
                     >
-                  <span className={`inline-block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                  <span className={`inline-block h-6 w-6 bg-white rounded-full shadow transform transition-transform ${
                       myCab.status !== 'OFFLINE' ? 'translate-x-6' : 'translate-x-0.5'
                   }`} />
                     </button>

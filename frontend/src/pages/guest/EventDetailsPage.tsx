@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, MapPin, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin } from 'lucide-react';
 import { getEventById, type EventItinerary } from '../../api/client';
 
 const formatDateTime = (iso: string) =>
@@ -49,6 +49,26 @@ export default function EventDetailsPage() {
         {event && (
           <div className="wedding-card overflow-hidden">
             <div className="p-5 space-y-4">
+              {/** Always render an image; backend provides fallback and UI guards broken links. */}
+              {(() => {
+                const imageSrc = event.imageUrl || '/images/default-event.svg';
+                return (
+                  <div className="rounded-xl overflow-hidden border border-gray-200">
+                    <img
+                      src={imageSrc}
+                      alt={event.title}
+                      className="w-full h-56 object-cover"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.src.endsWith('/images/default-event.svg')) {
+                          target.src = '/images/default-event.svg';
+                        }
+                      }}
+                    />
+                  </div>
+                );
+              })()}
+
               <div>
                 <h2 className="text-3xl font-bold" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif" }}>{event.title}</h2>
                 <p className="text-sm mt-1" style={{ color: 'var(--w-muted)' }}>Tap back to return to the schedule</p>
@@ -59,19 +79,6 @@ export default function EventDetailsPage() {
                 <p className="flex items-center gap-2"><MapPin className="w-5 h-5" style={{ color: 'var(--w-accent-strong)' }} /><span className="font-medium">{event.location.name}</span></p>
                 <p className="flex items-center gap-2"><Clock className="w-5 h-5" style={{ color: 'var(--w-accent-strong)' }} /><span className="font-medium">Duration: {Math.max(0, Math.round((new Date(event.endTime).getTime() - new Date(event.startTime).getTime()) / 60000))} mins</span></p>
               </div>
-
-              {event.imageUrl && (
-                <div className="rounded-xl overflow-hidden border border-gray-200">
-                  <img src={event.imageUrl} alt={event.title} className="w-full h-56 object-cover" />
-                </div>
-              )}
-
-              {!event.imageUrl && (
-                <div className="rounded-xl border border-dashed p-6 text-center text-sm" style={{ borderColor: 'var(--w-border)', color: 'var(--w-muted)' }}>
-                  <ImageIcon className="w-6 h-6 mx-auto mb-2" />
-                  No event image added yet.
-                </div>
-              )}
 
               <div>
                 <h3 className="text-base font-semibold mb-2" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif" }}>More Info</h3>

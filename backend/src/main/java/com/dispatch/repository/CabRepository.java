@@ -12,4 +12,6 @@ import java.util.Optional;
 public interface CabRepository extends JpaRepository<Cab, Long> {
     List<Cab> findByStatus(CabStatus status);
     Optional<Cab> findByDriverPhone(String driverPhone);
+    List<Cab> findTop10ByOrderByTripsCompletedDesc();
+    List<Cab> findTop10ByOrderByTotalKmDesc();
 }

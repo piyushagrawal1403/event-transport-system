@@ -4,6 +4,7 @@ import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, Part
 import { createRide, getLocations, getGuestRides, cancelRide, getConfig, createComplaint, type Location, type RideRequest, type RideRequestPayload } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
+import { clearAuthSession, getGuestIdentity } from '../../lib/auth';
 import { pushNotificationService } from '../../services/PushNotificationService';
 
 const MAX_CAB_CAPACITY = 4;
@@ -30,8 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function GuestHome() {
   const navigate = useNavigate();
-  const guestName = localStorage.getItem('guestName') || '';
-  const guestPhone = localStorage.getItem('guestPhone') || '';
+  const { name: guestName, phone: guestPhone } = getGuestIdentity();
 
   // Modal state
   const [openModal, setOpenModal] = useState<'schedule' | 'ride' | 'support' | 'complaints' | null>(null);
@@ -155,9 +155,9 @@ export default function GuestHome() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('guestName');
-    localStorage.removeItem('guestPhone');
+  const handleLogout = async () => {
+    await pushNotificationService.unsubscribeUser();
+    clearAuthSession();
     navigate('/');
   };
 
@@ -195,7 +195,7 @@ export default function GuestHome() {
             <p className="text-sm text-white/80">Hi, {guestName}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleLogout} className="p-2 hover:bg-white/20 rounded-lg transition">
+            <button onClick={() => { void handleLogout(); }} className="p-2 hover:bg-white/20 rounded-lg transition" type="button">
               <LogOut className="w-5 h-5" />
             </button>
           </div>

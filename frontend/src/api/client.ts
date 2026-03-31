@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearAuthSession, getAuthToken, type AuthSession, type UserRole } from '../lib/auth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
@@ -8,6 +9,67 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+api.interceptors.request.use((config) => {
+  const token = getAuthToken();
+  config.headers = config.headers || {};
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    if (typeof window !== 'undefined' && (status === 401 || status === 403)) {
+      clearAuthSession();
+      window.dispatchEvent(new CustomEvent('api-unauthorized', { detail: { status } }));
+      if (window.location.pathname !== '/') {
+        window.location.assign('/');
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const isUnauthorizedError = (error: unknown) => {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  return status === 401 || status === 403;
+};
+
+export interface RequestOtpPayload {
+  name?: string;
+  phone: string;
+  role: Exclude<UserRole, 'ADMIN'>;
+}
+
+export interface RequestOtpResponse {
+  message: string;
+  otp: string;
+  expiresAt: string;
+}
+
+export interface VerifyOtpPayload {
+  phone: string;
+  otp: string;
+  role: Exclude<UserRole, 'ADMIN'>;
+}
+
+export interface AdminLoginPayload {
+  username: string;
+  password: string;
+}
+
+export const requestOtp = (payload: RequestOtpPayload) =>
+  api.post<RequestOtpResponse>('/api/v1/auth/request-otp', payload);
+
+export const verifyOtp = (payload: VerifyOtpPayload) =>
+  api.post<AuthSession>('/api/v1/auth/verify-otp', payload);
+
+export const adminLogin = (payload: AdminLoginPayload) =>
+  api.post<AuthSession>('/api/v1/auth/admin-login', payload);
 
 // === Types ===
 
@@ -80,6 +142,26 @@ export interface DriverAnalytics {
   averageAcceptanceTimeSeconds: number;
 }
 
+export interface TopDriver {
+  cabId: number;
+  driverName: string;
+  licensePlate: string;
+  tripsCompleted: number;
+  totalKm: number;
+}
+
+export interface AdminDailyReport {
+  date: string;
+  totalRides: number;
+  completedRides: number;
+  cancelledRides: number;
+  driverDeclinedCount: number;
+  openComplaints: number;
+  closedComplaints: number;
+  topDriversByTrips: TopDriver[];
+  topDriversByKm: TopDriver[];
+}
+
 export type ComplaintStatus = 'OPEN' | 'CLOSED';
 
 export type RideIncidentType = 'GUEST_CANCELLED' | 'DRIVER_DECLINED';
@@ -130,7 +212,7 @@ export interface PushSubscriptionPayload {
   'keys.p256dh': string;
   'keys.auth': string;
   userPhone: string;
-  userType: 'ADMIN' | 'DRIVER' | 'GUEST';
+  userType: UserRole;
 }
 
 // === Ride Endpoints ===
@@ -159,9 +241,13 @@ export const getCabCompletedRides = (cabId: number) =>
 export const getOngoingRides = () =>
     api.get<RideRequest[]>('/api/v1/rides/ongoing');
 
-export const getCancelledRides = (date?: string) =>
+export const getCancelledRides = (filters?: { date?: string; driver?: string; status?: RideIncidentType | '' }) =>
     api.get<CancelledQueueEntry[]>('/api/v1/rides/cancelled', {
-      params: date ? { date } : {}
+      params: {
+        ...(filters?.date ? { date: filters.date } : {}),
+        ...(filters?.driver ? { driver: filters.driver } : {}),
+        ...(filters?.status ? { status: filters.status } : {}),
+      }
     });
 
 export const getLocations = () =>
@@ -272,9 +358,12 @@ export const createComplaint = (payload: {
   rideRequestId?: number;
 }) => api.post<Complaint>('/api/v1/complaints', payload);
 
-export const getComplaints = (status?: ComplaintStatus) =>
+export const getComplaints = (status?: ComplaintStatus, date?: string) =>
     api.get<Complaint[]>('/api/v1/complaints', {
-      params: status ? { status } : {}
+      params: {
+        ...(status ? { status } : {}),
+        ...(date ? { date } : {}),
+      }
     });
 
 export const closeComplaint = (id: number, closedBy?: string) =>
@@ -292,8 +381,27 @@ export const getNotifications = (since?: string) =>
 export const subscribeToPush = (subscription: PushSubscriptionPayload) =>
     api.post('/api/v1/push/subscribe', subscription);
 
+export const unsubscribeFromPush = (endpoint: string) =>
+    api.post('/api/v1/push/unsubscribe', { endpoint });
+
 export const getVapidPublicKey = () =>
     api.get<{ vapidPublicKey: string }>('/api/v1/push/vapid-public-key');
+
+export interface PushSubscriptionEntry {
+  id: number;
+  userType: string;
+  userPhone: string;
+  subscribedAt: string | null;
+  endpointSuffix: string;
+}
+
+export const getAdminPushSubscriptions = () =>
+    api.get<{ total: number; adminCount: number; subscriptions: PushSubscriptionEntry[] }>(
+        '/api/v1/push/admin/subscriptions'
+    );
+
+export const sendAdminTestPush = () =>
+    api.post<{ success: boolean; message: string }>('/api/v1/push/admin/test');
 
 // App config — admin phone + name, editable from the admin dashboard
 export const getConfig = () =>
@@ -301,5 +409,36 @@ export const getConfig = () =>
 
 export const updateConfig = (payload: { adminPhone?: string; adminName?: string }) =>
     api.put<{ adminPhone: string; adminName: string }>('/api/v1/config', payload);
+
+// === Admin Reports and CSV Exports ===
+
+export const getAdminDailyReport = (date?: string) =>
+    api.get<AdminDailyReport>('/api/v1/admin/reports/daily', {
+      params: date ? { date } : {}
+    });
+
+export const exportCancelledQueueCsv = (filters?: { date?: string; driver?: string; status?: RideIncidentType | '' }) =>
+    api.get<Blob>('/api/v1/admin/reports/exports/cancelled-queue', {
+      params: {
+        ...(filters?.date ? { date: filters.date } : {}),
+        ...(filters?.driver ? { driver: filters.driver } : {}),
+        ...(filters?.status ? { status: filters.status } : {}),
+      },
+      responseType: 'blob',
+    });
+
+export const exportDriverAnalyticsCsv = () =>
+    api.get<Blob>('/api/v1/admin/reports/exports/driver-analytics', {
+      responseType: 'blob',
+    });
+
+export const exportComplaintsCsv = (filters?: { status?: ComplaintStatus; date?: string }) =>
+    api.get<Blob>('/api/v1/admin/reports/exports/complaints', {
+      params: {
+        ...(filters?.status ? { status: filters.status } : {}),
+        ...(filters?.date ? { date: filters.date } : {}),
+      },
+      responseType: 'blob',
+    });
 
 export default api;

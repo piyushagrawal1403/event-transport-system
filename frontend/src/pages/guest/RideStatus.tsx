@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Car, Phone, KeyRound, Clock, MapPin, ArrowLeft, CheckCircle2, XCircle, PhoneCall } from 'lucide-react';
 import { getGuestRides, cancelRide, getConfig, type RideRequest } from '../../api/client';
+import { getGuestIdentity } from '../../lib/auth';
 
 // Statuses the guest/admin can cancel — anything before the driver starts the trip (IN_TRANSIT)
 const CANCELLABLE: RideRequest['status'][] = ['PENDING', 'OFFERED', 'ACCEPTED', 'ARRIVED'];
@@ -34,7 +35,7 @@ export default function RideStatus() {
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const navigate = useNavigate();
 
-  const guestPhone = localStorage.getItem('guestPhone') || '';
+  const { phone: guestPhone } = getGuestIdentity();
 
   const fetchRides = useCallback(async () => {
     if (!guestPhone) { navigate('/'); return; }

@@ -6,9 +6,11 @@ import com.dispatch.model.Complaint;
 import com.dispatch.model.ComplaintStatus;
 import com.dispatch.service.ComplaintService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -27,8 +29,10 @@ public class ComplaintController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Complaint>> getComplaints(@RequestParam(required = false) ComplaintStatus status) {
-        return ResponseEntity.ok(complaintService.getComplaints(status));
+    public ResponseEntity<List<Complaint>> getComplaints(
+            @RequestParam(required = false) ComplaintStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(complaintService.getComplaints(status, date));
     }
 
     @RequestMapping(value = "/{id}/close", method = {RequestMethod.PATCH, RequestMethod.PUT})

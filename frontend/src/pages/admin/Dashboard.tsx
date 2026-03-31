@@ -1,16 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Car, Users, Clock, MapPin, CheckCircle2, AlertTriangle,
   RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award, Flag, Bell, BellRing,
-  Settings, Save, Phone, User, X, MessageSquare, Gauge
+  Settings, Save, Phone, User, X, MessageSquare, Gauge, LogOut, MoreVertical
 } from 'lucide-react';
 import {
   getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
   getConfig, updateConfig, getCancelledRides, getCabAnalytics,
   getComplaints, closeComplaint, createEvent, updateEvent, uploadEventImage,
+  exportCancelledQueueCsv, exportDriverAnalyticsCsv, exportComplaintsCsv,
+  getAdminPushSubscriptions, sendAdminTestPush,
+  isUnauthorizedError,
   type RideRequest, type Cab, type EventItinerary, type Location, type DriverAnalytics,
-  type Complaint, type CancelledQueueEntry
+  type Complaint, type CancelledQueueEntry, type RideIncidentType, type ComplaintStatus
 } from '../../api/client';
+import { clearAuthSession, getAuthSession } from '../../lib/auth';
 import { pushNotificationService } from '../../services/PushNotificationService';
 
 interface LocationGroup {
@@ -36,11 +41,15 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const adminSession = getAuthSession();
+  const adminPhone = adminSession?.user.phone || 'admin';
   const [groups, setGroups] = useState<LocationGroup[]>([]);
   const [cabs, setCabs] = useState<Cab[]>([]);
   const [selectedRides, setSelectedRides] = useState<Map<number, number>>(new Map());
   const [selectedCabId, setSelectedCabId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [showFleet, setShowFleet] = useState(true);
@@ -62,6 +71,10 @@ export default function Dashboard() {
     const offset = now.getTimezoneOffset() * 60000;
     return new Date(now.getTime() - offset).toISOString().slice(0, 10);
   });
+  const [cancelledDriverFilter, setCancelledDriverFilter] = useState('');
+  const [cancelledStatusFilter, setCancelledStatusFilter] = useState<RideIncidentType | ''>('');
+  const [complaintStatusFilter, setComplaintStatusFilter] = useState<ComplaintStatus | ''>('');
+  const [complaintDateFilter, setComplaintDateFilter] = useState('');
   const [eventForm, setEventForm] = useState({ title: '', description: '', imageUrl: '', startTime: '', endTime: '', locationId: '', notifyGuests: false });
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<DriverAnalytics | null>(null);
@@ -69,6 +82,13 @@ export default function Dashboard() {
   const [adminPushPermission, setAdminPushPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
   const [adminPushEnabled, setAdminPushEnabled] = useState(false);
   const [enablingAdminPush, setEnablingAdminPush] = useState(false);
+  const [showMobileHeaderMenu, setShowMobileHeaderMenu] = useState(false);
+
+  // Push debug state (used inside Settings modal)
+  const [pushSubCount, setPushSubCount] = useState<{ total: number; adminCount: number } | null>(null);
+  const [loadingPushSubCount, setLoadingPushSubCount] = useState(false);
+  const [sendingTestPush, setSendingTestPush] = useState(false);
+  const [testPushResult, setTestPushResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Settings panel
   const [showSettings, setShowSettings] = useState(false);
@@ -80,13 +100,26 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
+      setUnauthorized(false);
       const [ridesRes, cabsRes, ongoingRes, cancelledRes, complaintsRes] = await Promise.allSettled([
         getPendingRides(),
         getCabs(),
         getOngoingRides(),
-        getCancelledRides(selectedCancelledDate),
-        getComplaints()
+        getCancelledRides({
+          date: selectedCancelledDate,
+          driver: cancelledDriverFilter.trim() || undefined,
+          status: cancelledStatusFilter || undefined,
+        }),
+        getComplaints(complaintStatusFilter || undefined, complaintDateFilter || undefined)
       ]);
+
+      const firstUnauthorized = [ridesRes, cabsRes, ongoingRes, cancelledRes, complaintsRes]
+        .find((result) => result.status === 'rejected' && isUnauthorizedError(result.reason));
+      if (firstUnauthorized) {
+        setUnauthorized(true);
+        setLoading(false);
+        return;
+      }
       if (cabsRes.status === 'fulfilled') setCabs(cabsRes.value.data);
       if (ongoingRes.status === 'fulfilled') setOngoingRides(ongoingRes.value.data);
       if (cancelledRes.status === 'fulfilled') setCancelledRides(cancelledRes.value.data);
@@ -133,7 +166,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCancelledDate]);
+  }, [selectedCancelledDate, cancelledDriverFilter, cancelledStatusFilter, complaintDateFilter, complaintStatusFilter]);
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -170,14 +203,20 @@ export default function Dashboard() {
     setAdminPushPermission(permission);
 
     if (permission === 'granted') {
-      const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+      const subscribed = await pushNotificationService.subscribeUser(adminPhone, 'ADMIN', {
         permissionAlreadyGranted: true,
       });
       setAdminPushEnabled(subscribed);
     } else {
       setAdminPushEnabled(false);
     }
-  }, []);
+  }, [adminPhone]);
+
+  const handleLogout = useCallback(async () => {
+    await pushNotificationService.unsubscribeUser();
+    clearAuthSession();
+    navigate('/');
+  }, [navigate]);
 
   // Keep admin notifications auto-on by re-checking subscription state
   useEffect(() => {
@@ -217,7 +256,7 @@ export default function Dashboard() {
         return;
       }
 
-      const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+      const subscribed = await pushNotificationService.subscribeUser(adminPhone, 'ADMIN', {
         permissionAlreadyGranted: true,
       });
       setAdminPushEnabled(subscribed);
@@ -226,6 +265,32 @@ export default function Dashboard() {
       setAdminPushEnabled(false);
     } finally {
       setEnablingAdminPush(false);
+    }
+  };
+
+  const handleLoadPushSubCount = async () => {
+    setLoadingPushSubCount(true);
+    setTestPushResult(null);
+    try {
+      const res = await getAdminPushSubscriptions();
+      setPushSubCount({ total: res.data.total, adminCount: res.data.adminCount });
+    } catch {
+      setPushSubCount(null);
+    } finally {
+      setLoadingPushSubCount(false);
+    }
+  };
+
+  const handleSendTestPush = async () => {
+    setSendingTestPush(true);
+    setTestPushResult(null);
+    try {
+      const res = await sendAdminTestPush();
+      setTestPushResult(res.data);
+    } catch {
+      setTestPushResult({ success: false, message: 'Request failed — check backend logs.' });
+    } finally {
+      setSendingTestPush(false);
     }
   };
 
@@ -337,6 +402,51 @@ export default function Dashboard() {
     }
   };
 
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportCancelledQueue = async () => {
+    try {
+      const res = await exportCancelledQueueCsv({
+        date: selectedCancelledDate,
+        driver: cancelledDriverFilter.trim() || undefined,
+        status: cancelledStatusFilter || undefined,
+      });
+      downloadBlob(res.data, `cancelled-queue-${selectedCancelledDate}.csv`);
+    } catch {
+      alert('Failed to export cancelled queue CSV.');
+    }
+  };
+
+  const handleExportDriverAnalytics = async () => {
+    try {
+      const res = await exportDriverAnalyticsCsv();
+      downloadBlob(res.data, 'driver-analytics-summary.csv');
+    } catch {
+      alert('Failed to export driver analytics CSV.');
+    }
+  };
+
+  const handleExportComplaints = async () => {
+    try {
+      const res = await exportComplaintsCsv({
+        status: complaintStatusFilter || undefined,
+        date: complaintDateFilter || undefined,
+      });
+      downloadBlob(res.data, `complaints-${complaintDateFilter || 'all'}.csv`);
+    } catch {
+      alert('Failed to export complaints CSV.');
+    }
+  };
+
   if (loading) {
     return (
         <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -345,75 +455,203 @@ export default function Dashboard() {
     );
   }
 
+  if (unauthorized) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-2">
+          <h2 className="text-xl font-semibold">Unauthorized</h2>
+          <p className="text-sm text-gray-400">You do not have access to admin operations. Please sign in with an admin-enabled session.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
       <div className="min-h-screen bg-gray-900 text-white">
         {/* Header */}
-        <div className="bg-gray-800 border-b border-gray-700 px-4 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold">Dispatch Dashboard</h1>
-              <p className="text-gray-400 text-sm">
-                {groups.reduce((sum, g) => sum + g.rides.length, 0)} pending · {availableCabs.length} cabs free
-              </p>
+        <div className="sticky top-0 z-20 border-b border-gray-700/80 bg-gray-900/90 px-3 py-3 backdrop-blur sm:px-4">
+          <div className="max-w-7xl mx-auto space-y-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">Dispatch Dashboard</h1>
+                <p className="mt-0.5 text-xs text-gray-400 sm:text-sm">
+                  {groups.reduce((sum, g) => sum + g.rides.length, 0)} pending · {availableCabs.length} cabs free
+                </p>
+              </div>
+              <div className="hidden sm:inline text-xs text-gray-500 whitespace-nowrap">Updated {lastRefresh.toLocaleTimeString()}</div>
             </div>
-            <div className="flex items-center gap-2">
-              {/* Notification status badge — hidden on xs */}
-              <span className={`hidden md:inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                adminPushEnabled
-                  ? 'bg-green-900 text-green-200'
-                  : adminPushPermission === 'denied'
-                    ? 'bg-red-900 text-red-200'
-                    : 'bg-yellow-900 text-yellow-200'
-              }`}>
-                {adminPushEnabled ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
-                {adminPushEnabled
-                  ? 'Notifications on'
-                  : adminPushPermission === 'denied'
-                    ? 'Blocked'
-                    : adminPushPermission === 'unsupported'
-                      ? 'Unsupported'
-                      : 'Off'}
-              </span>
-              {!adminPushEnabled && adminPushPermission !== 'unsupported' && (
+
+            <div className="space-y-2 sm:space-y-0">
+              <div className="flex items-center justify-between gap-2 sm:hidden">
                 <button
-                  onClick={handleEnableAdminNotifications}
-                  disabled={enablingAdminPush}
-                  title={enablingAdminPush ? 'Enabling...' : 'Enable notifications'}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2 py-2 sm:px-3 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={fetchData}
+                  className="inline-flex h-11 min-w-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 transition hover:bg-gray-700"
+                  title="Refresh"
+                  type="button"
                 >
-                  <Bell className="w-4 h-4" />
-                  <span className="hidden sm:inline">
-                    {enablingAdminPush ? 'Enabling...' : 'Enable alerts'}
-                  </span>
+                  <RefreshCw className="h-4 w-4" />
                 </button>
-              )}
-              {adminPushEnabled && (
-                <span className="inline-flex items-center sm:hidden">
-                  <BellRing className="w-4 h-4 text-green-400" />
+
+                <span className={`inline-flex h-11 items-center gap-1 rounded-full px-3 text-xs font-medium ${
+                  adminPushEnabled
+                    ? 'bg-green-900/70 text-green-200'
+                    : adminPushPermission === 'denied'
+                      ? 'bg-red-900/70 text-red-200'
+                      : 'bg-yellow-900/70 text-yellow-200'
+                }`}>
+                  {adminPushEnabled ? <BellRing className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                  {adminPushEnabled ? 'Alerts required' : adminPushPermission === 'denied' ? 'Blocked' : 'Pending'}
                 </span>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowMobileHeaderMenu((current) => !current)}
+                    className="inline-flex h-11 min-w-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 transition hover:bg-gray-700"
+                    title="More actions"
+                    type="button"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+
+                  {showMobileHeaderMenu && (
+                    <div className="absolute right-0 top-12 z-30 w-48 space-y-1 rounded-xl border border-gray-700 bg-gray-800 p-1.5 shadow-xl">
+                      <button
+                        onClick={() => {
+                          setShowComplaints((current) => !current);
+                          setShowMobileHeaderMenu(false);
+                        }}
+                        className="flex h-11 w-full touch-manipulation items-center justify-between rounded-lg px-3 text-sm hover:bg-gray-700"
+                        type="button"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4" />
+                          Complaints
+                        </span>
+                        <span className="rounded-full bg-gray-700 px-2 py-0.5 text-xs">{openComplaintsCount}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowMobileHeaderMenu(false);
+                          void handleEnableAdminNotifications();
+                        }}
+                        className="flex h-11 w-full touch-manipulation items-center gap-2 rounded-lg px-3 text-sm hover:bg-gray-700"
+                        type="button"
+                        disabled={adminPushPermission === 'unsupported' || enablingAdminPush}
+                      >
+                        <Bell className="h-4 w-4" />
+                        {enablingAdminPush ? 'Enabling alerts…' : adminPushEnabled ? 'Refresh alerts' : 'Enable alerts'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowSettings(true);
+                          setShowMobileHeaderMenu(false);
+                          setPushSubCount(null);
+                          setTestPushResult(null);
+                        }}
+                        className="flex h-11 w-full touch-manipulation items-center gap-2 rounded-lg px-3 text-sm hover:bg-gray-700"
+                        type="button"
+                      >
+                        <Settings className="h-4 w-4" />
+                        Settings
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowMobileHeaderMenu(false);
+                          void handleLogout();
+                        }}
+                        className="flex h-11 w-full touch-manipulation items-center gap-2 rounded-lg px-3 text-sm text-red-300 hover:bg-gray-700"
+                        type="button"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Logout
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {adminPushPermission === 'denied' && (
+                <p className="text-xs text-red-300 sm:hidden">Admin alerts are mandatory. Re-enable browser notification permission.</p>
               )}
-              <span className="hidden sm:inline text-xs text-gray-500">Updated {lastRefresh.toLocaleTimeString()}</span>
+
+              <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:justify-end sm:gap-2">
               <button
                 onClick={() => setShowComplaints((current) => !current)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 px-3 py-2 text-sm font-medium transition"
+                className="relative inline-flex h-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 text-sm font-medium transition hover:bg-gray-700"
                 title="Complaints"
+                type="button"
               >
-                <MessageSquare className="w-4 h-4" />
-                <span className="hidden md:inline">Complaints</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${openComplaintsCount > 0 ? 'bg-yellow-900 text-yellow-300' : 'bg-gray-600 text-gray-200'}`}>
+                <MessageSquare className="h-4 w-4" />
+                <span>Complaints</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-xs ${openComplaintsCount > 0 ? 'bg-yellow-900 text-yellow-300' : 'bg-gray-600 text-gray-200'}`}>
                   {openComplaintsCount}
                 </span>
               </button>
-              <button onClick={fetchData} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition" title="Refresh">
-                <RefreshCw className="w-4 h-4" />
-              </button>
+
               <button
-                onClick={() => setShowSettings(true)}
-                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
-                title="Settings"
+                onClick={fetchData}
+                className="inline-flex h-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 transition hover:bg-gray-700"
+                title="Refresh"
+                type="button"
               >
-                <Settings className="w-4 h-4" />
+                <RefreshCw className="h-4 w-4" />
               </button>
+
+              <button
+                onClick={() => { setShowSettings(true); setPushSubCount(null); setTestPushResult(null); }}
+                className="inline-flex h-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 transition hover:bg-gray-700"
+                title="Settings"
+                type="button"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+
+              <button
+                onClick={() => { void handleLogout(); }}
+                className="inline-flex h-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 text-sm font-medium transition hover:bg-gray-700"
+                title="Logout"
+                type="button"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Logout</span>
+              </button>
+
+              <div className="col-span-4 mt-0.5 hidden flex-wrap items-center justify-between gap-1.5 sm:col-span-full sm:mt-0 sm:flex sm:justify-end sm:gap-2">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium sm:text-xs ${
+                  adminPushEnabled
+                    ? 'bg-green-900/70 text-green-200'
+                    : adminPushPermission === 'denied'
+                      ? 'bg-red-900/70 text-red-200'
+                      : 'bg-yellow-900/70 text-yellow-200'
+                }`}>
+                  {adminPushEnabled ? <BellRing className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                  {adminPushEnabled
+                    ? 'Alerts required'
+                    : adminPushPermission === 'denied'
+                      ? 'Blocked'
+                      : adminPushPermission === 'unsupported'
+                        ? 'Unsupported'
+                        : 'Pending'}
+                </span>
+
+                {adminPushPermission !== 'unsupported' && (
+                  <button
+                    onClick={() => { void handleEnableAdminNotifications(); }}
+                    disabled={enablingAdminPush}
+                    title={adminPushEnabled ? 'Refresh alert subscription' : 'Enable notifications'}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:text-xs"
+                    type="button"
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    {enablingAdminPush ? 'Enabling…' : adminPushEnabled ? 'Refresh alerts' : 'Enable alerts'}
+                  </button>
+                )}
+
+                {adminPushPermission === 'denied' && <span className="text-xs text-red-300">Admin alerts are mandatory; enable browser notifications.</span>}
+
+                <span className="text-[11px] text-gray-500 sm:hidden">Updated {lastRefresh.toLocaleTimeString()}</span>
+              </div>
+            </div>
             </div>
           </div>
         </div>
@@ -541,6 +779,29 @@ export default function Dashboard() {
               </div>
               {showCancelledQueue && (
                 <div className="px-4 pb-4 space-y-2 max-h-64 overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      value={cancelledDriverFilter}
+                      onChange={(e) => setCancelledDriverFilter(e.target.value)}
+                      placeholder="Driver / phone / plate"
+                      className="rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs text-gray-200 outline-none"
+                    />
+                    <select
+                      value={cancelledStatusFilter}
+                      onChange={(e) => setCancelledStatusFilter(e.target.value as RideIncidentType | '')}
+                      className="rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs text-gray-200 outline-none"
+                    >
+                      <option value="">All statuses</option>
+                      <option value="GUEST_CANCELLED">Guest Cancelled</option>
+                      <option value="DRIVER_DECLINED">Driver Declined</option>
+                    </select>
+                    <button
+                      onClick={handleExportCancelledQueue}
+                      className="rounded-md bg-gray-700 hover:bg-gray-600 px-3 py-1.5 text-xs font-medium"
+                    >
+                      Export CSV
+                    </button>
+                  </div>
                   {cancelledRides.length === 0 ? (
                     <p className="text-sm text-gray-500">No cancelled or declined rides for this day.</p>
                   ) : cancelledRides.map((ride) => (
@@ -756,16 +1017,24 @@ export default function Dashboard() {
 
             {/* Fleet */}
             <div className="bg-gray-800 rounded-xl border border-gray-700">
-              <button
-                  onClick={() => setShowFleet(!showFleet)}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-750 transition rounded-xl"
-              >
-                <h3 className="font-semibold flex items-center gap-2">
-                  <Car className="w-4 h-4 text-blue-400" />
-                  Fleet ({availableCabs.length} free / {cabs.length} total)
-                </h3>
-                {showFleet ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
+              <div className="px-4 py-3 flex items-center justify-between gap-2">
+                <button
+                    onClick={() => setShowFleet(!showFleet)}
+                    className="flex-1 flex items-center justify-between hover:bg-gray-750 transition rounded-xl"
+                >
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Car className="w-4 h-4 text-blue-400" />
+                    Fleet ({availableCabs.length} free / {cabs.length} total)
+                  </h3>
+                  {showFleet ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={handleExportDriverAnalytics}
+                  className="rounded-md bg-gray-700 hover:bg-gray-600 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
+                >
+                  Export CSV
+                </button>
+              </div>
               {showFleet && (
                   <div className="px-4 pb-4 space-y-2 max-h-96 overflow-y-auto">
                     {cabs.map((cab) => (
@@ -826,6 +1095,29 @@ export default function Dashboard() {
               </button>
               {showComplaints && (
                 <div className="px-4 pb-4 space-y-2 max-h-72 overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <select
+                      value={complaintStatusFilter}
+                      onChange={(e) => setComplaintStatusFilter(e.target.value as ComplaintStatus | '')}
+                      className="rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs text-gray-200 outline-none"
+                    >
+                      <option value="">All statuses</option>
+                      <option value="OPEN">OPEN</option>
+                      <option value="CLOSED">CLOSED</option>
+                    </select>
+                    <input
+                      type="date"
+                      value={complaintDateFilter}
+                      onChange={(e) => setComplaintDateFilter(e.target.value)}
+                      className="rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs text-gray-200 outline-none"
+                    />
+                    <button
+                      onClick={handleExportComplaints}
+                      className="rounded-md bg-gray-700 hover:bg-gray-600 px-3 py-1.5 text-xs font-medium"
+                    >
+                      Export CSV
+                    </button>
+                  </div>
                   {complaints.length === 0 ? (
                     <p className="text-sm text-gray-500">No complaints filed.</p>
                   ) : complaints.map((complaint) => (
@@ -957,7 +1249,24 @@ export default function Dashboard() {
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   onChange={(e) => {
-                    setEventImageFile(e.target.files?.[0] || null);
+                    const file = e.target.files?.[0] || null;
+                    if (!file) {
+                      setEventImageFile(null);
+                      setEventImageError('');
+                      return;
+                    }
+                    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+                    if (!allowedTypes.includes(file.type)) {
+                      setEventImageFile(null);
+                      setEventImageError('Only JPG, PNG, or WEBP images are allowed.');
+                      return;
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                      setEventImageFile(null);
+                      setEventImageError('Image exceeds max size of 5MB.');
+                      return;
+                    }
+                    setEventImageFile(file);
                     setEventImageError('');
                   }}
                   className="w-full text-xs text-gray-300 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white hover:file:bg-blue-500"
@@ -1154,6 +1463,61 @@ export default function Dashboard() {
                 <Save className="w-4 h-4" />
                 {savingSettings ? 'Saving…' : settingsSaved ? '✓ Saved!' : 'Save Settings'}
               </button>
+
+              {/* ── Push Notification Debug Panel ── */}
+              <div className="border-t border-gray-700 pt-3 space-y-2">
+                <p className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
+                  <BellRing className="w-3.5 h-3.5" />
+                  Push Notification Debug
+                </p>
+                <p className="text-xs text-gray-500">
+                  Use these tools to verify push subscriptions are saved and that delivery works —
+                  without waiting for a real ride event.
+                </p>
+
+                {/* Subscription count row */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { void handleLoadPushSubCount(); }}
+                    disabled={loadingPushSubCount}
+                    className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-sm rounded-lg transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    type="button"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingPushSubCount ? 'animate-spin' : ''}`} />
+                    {loadingPushSubCount ? 'Checking…' : 'Check DB subscriptions'}
+                  </button>
+                  {pushSubCount !== null && (
+                    <span className={`text-xs px-2 py-1 rounded-lg font-mono ${pushSubCount.adminCount > 0 ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                      {pushSubCount.adminCount} admin / {pushSubCount.total} total
+                    </span>
+                  )}
+                </div>
+
+                {/* Warning if no admin subscription found */}
+                {pushSubCount !== null && pushSubCount.adminCount === 0 && (
+                  <p className="text-xs text-red-300 bg-red-950 border border-red-800 rounded-lg px-2 py-1.5">
+                    ⚠ No ADMIN subscription in DB. Close this panel, click <strong>"Enable alerts"</strong> in the header, then re-check.
+                    Also note: the dev H2 DB is in-memory — subscriptions are wiped on every backend restart.
+                  </p>
+                )}
+
+                {/* Send test push */}
+                <button
+                  onClick={() => { void handleSendTestPush(); }}
+                  disabled={sendingTestPush}
+                  className="w-full py-1.5 bg-indigo-700 hover:bg-indigo-600 text-sm rounded-lg transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  type="button"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {sendingTestPush ? 'Sending…' : 'Send test push to admin'}
+                </button>
+
+                {testPushResult && (
+                  <p className={`text-xs px-2 py-1.5 rounded-lg border ${testPushResult.success ? 'bg-green-900 border-green-700 text-green-300' : 'bg-red-950 border-red-800 text-red-300'}`}>
+                    {testPushResult.success ? '✓ ' : '✗ '}{testPushResult.message}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

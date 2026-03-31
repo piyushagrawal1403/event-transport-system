@@ -36,11 +36,15 @@ public class RideIncidentService {
     }
 
     public List<RideIncident> getIncidentsForDate(LocalDate date) {
+        return getIncidentsForDate(date, null, null);
+    }
+
+    public List<RideIncident> getIncidentsForDate(LocalDate date, String driverQuery, RideIncidentType incidentType) {
         LocalDate targetDate = date == null ? LocalDate.now() : date;
         ZoneId zoneId = ZoneId.systemDefault();
         Instant start = targetDate.atStartOfDay(zoneId).toInstant();
         Instant end = targetDate.plusDays(1).atStartOfDay(zoneId).toInstant();
-        return rideIncidentRepository.findByOccurredAtBetweenOrderByOccurredAtDesc(start, end);
+        return rideIncidentRepository.findForAdminFilters(start, end, incidentType, driverQuery);
     }
 
     private RideIncident buildIncident(RideRequest ride, Cab cabSnapshot, RideIncidentType incidentType) {

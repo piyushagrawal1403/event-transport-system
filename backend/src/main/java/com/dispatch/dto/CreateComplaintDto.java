@@ -1,6 +1,7 @@
 package com.dispatch.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 
 public class CreateComplaintDto {
 
@@ -8,6 +9,7 @@ public class CreateComplaintDto {
 	private String guestName;
 
 	@NotBlank(message = "Guest phone is required")
+	@Pattern(regexp = "^[0-9]{10}$", message = "Guest phone must be exactly 10 digits")
 	private String guestPhone;
 
 	@NotBlank(message = "Complaint message is required")

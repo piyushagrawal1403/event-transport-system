@@ -5,6 +5,8 @@ import com.dispatch.model.*;
 import com.dispatch.repository.CabRepository;
 import com.dispatch.repository.EventNotificationRepository;
 import com.dispatch.repository.RideRequestRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +15,8 @@ import java.util.*;
 
 @Service
 public class DispatchService {
+
+    private static final Logger log = LoggerFactory.getLogger(DispatchService.class);
 
     private final CabRepository cabRepository;
     private final RideRequestRepository rideRequestRepository;
@@ -105,6 +109,9 @@ public class DispatchService {
                     String.format("Your ride is assigned: %s (%s).", cab.getDriverName(), cab.getLicensePlate())
             );
         }
+
+        log.info("action=rides_assigned cabId={} cabPlate='{}' rideCount={} pax={} driver='{}'",
+                cab.getId(), cab.getLicensePlate(), rides.size(), totalPassengers, cab.getDriverName());
 
         Map<String, String> result = new HashMap<>();
         result.put("magicLinkId", magicLinkId);

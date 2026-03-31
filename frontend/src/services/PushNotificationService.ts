@@ -1,8 +1,9 @@
 // src/services/PushNotificationService.ts
-import { getVapidPublicKey, subscribeToPush } from '../api/client';
+import { getVapidPublicKey, subscribeToPush, unsubscribeFromPush } from '../api/client';
 
 export class PushNotificationService {
   private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
+  private lastSubscriptionFingerprint = '';
 
   async initialize(): Promise<void> {
     if (!window.isSecureContext) {
@@ -88,6 +89,11 @@ export class PushNotificationService {
         });
       }
 
+      const fingerprint = `${userType}:${userPhone}:${subscription.endpoint}`;
+      if (this.lastSubscriptionFingerprint === fingerprint) {
+        return true;
+      }
+
       await subscribeToPush({
           endpoint: subscription.endpoint,
           'keys.p256dh': this.arrayBufferToBase64(subscription.getKey('p256dh')),
@@ -96,11 +102,36 @@ export class PushNotificationService {
           userType,
       });
 
+      this.lastSubscriptionFingerprint = fingerprint;
       console.log('User subscribed to push notifications');
       return true;
     } catch (error) {
       console.error('Failed to subscribe to push notifications:', error);
       return false;
+    }
+  }
+
+  async unsubscribeUser(): Promise<void> {
+    if (!this.serviceWorkerRegistration) {
+      await this.initialize();
+    }
+
+    if (!this.serviceWorkerRegistration) {
+      return;
+    }
+
+    try {
+      const subscription = await this.serviceWorkerRegistration.pushManager.getSubscription();
+      if (!subscription) {
+        this.lastSubscriptionFingerprint = '';
+        return;
+      }
+
+      await unsubscribeFromPush(subscription.endpoint);
+      await subscription.unsubscribe();
+      this.lastSubscriptionFingerprint = '';
+    } catch (error) {
+      console.error('Failed to unsubscribe from push notifications:', error);
     }
   }
 

@@ -4,6 +4,7 @@ import { Car, Phone, KeyRound, Clock, MapPin, Users, ArrowRight, Building2, Part
 import { createRide, getLocations, getGuestRides, cancelRide, getConfig, createComplaint, type Location, type RideRequest, type RideRequestPayload } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
+import { clearAuthSession, getGuestIdentity } from '../../lib/auth';
 import { pushNotificationService } from '../../services/PushNotificationService';
 
 const MAX_CAB_CAPACITY = 4;
@@ -30,8 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function GuestHome() {
   const navigate = useNavigate();
-  const guestName = localStorage.getItem('guestName') || '';
-  const guestPhone = localStorage.getItem('guestPhone') || '';
+  const { name: guestName, phone: guestPhone } = getGuestIdentity();
 
   // Modal state
   const [openModal, setOpenModal] = useState<'schedule' | 'ride' | 'support' | 'complaints' | null>(null);
@@ -156,8 +156,7 @@ export default function GuestHome() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('guestName');
-    localStorage.removeItem('guestPhone');
+    clearAuthSession();
     navigate('/');
   };
 

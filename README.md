@@ -12,6 +12,7 @@ A production-style transport dispatch platform for coordinating event cab operat
 ## Core Capabilities
 
 - Guest ride booking with passenger split logic (for > cab capacity)
+- Unified guest/driver OTP login plus admin credential login
 - Admin dispatch queue with batch assignment and capacity checks
 - Driver consent flow (accept / deny) before trip start
 - OTP validation at trip start (not drop-off)
@@ -24,7 +25,7 @@ A production-style transport dispatch platform for coordinating event cab operat
 - Complaint system (OPEN/CLOSED)
 - Event itinerary with details page and image support
 - Admin event image upload endpoint
-- Role-based API access control for ADMIN/DRIVER/GUEST contexts
+- JWT-based API access control for ADMIN/DRIVER/GUEST contexts
 - Push notifications for ADMIN / DRIVER / GUEST
 - SLA alerting for delayed rides
 
@@ -32,7 +33,7 @@ A production-style transport dispatch platform for coordinating event cab operat
 
 ### Guest
 
-- Login with name + phone
+- Login with name + phone + OTP
 - View event timeline
 - Open event details page (`/events/:eventId`)
 - Book ride (to venue / to hotel)
@@ -45,6 +46,7 @@ A production-style transport dispatch platform for coordinating event cab operat
 
 ### Admin
 
+- Login with admin username/password from environment variables
 - View pending ride queue grouped by location
 - Assign rides to available cabs with capacity checks
 - Monitor active trips
@@ -61,6 +63,7 @@ A production-style transport dispatch platform for coordinating event cab operat
 
 ### Driver
 
+- Login with registered phone + OTP
 - View assigned/active rides
 - Accept or deny assigned batch
 - Mark arrived
@@ -100,11 +103,21 @@ Notes:
 
 | Route | Description |
 |---|---|
-| `/` | Guest login |
+| `/` | Unified guest / driver OTP login and admin login |
 | `/home` | Guest home (timeline + booking + active rides) |
+| `/request` | Guest request ride page |
+| `/status` | Guest ride status page |
 | `/events/:eventId` | Guest event details |
 | `/admin` | Admin dashboard |
 | `/driver` | Driver dashboard |
+
+### Authentication
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/auth/request-otp` | Generate a 5-minute OTP for guest/driver login |
+| `POST` | `/api/v1/auth/verify-otp` | Verify OTP and issue JWT |
+| `POST` | `/api/v1/auth/admin-login` | Admin login via environment-backed credentials |
 
 ## API Reference
 
@@ -169,15 +182,13 @@ Notes:
 | `GET` | `/api/v1/admin/reports/exports/driver-analytics` | Driver analytics CSV |
 | `GET` | `/api/v1/admin/reports/exports/complaints?...` | Complaints CSV |
 
-### Access Control Headers (Protected APIs)
+### Access Control (Protected APIs)
 
-For admin/driver-protected endpoints, send:
+For protected endpoints, send:
 
-- `X-User-Role: ADMIN | DRIVER | GUEST`
-- `X-Access-Key: <role access key>`
-- `X-User-Phone: <driver/guest phone>` (required for `DRIVER`)
+- `Authorization: Bearer <jwt>`
 
-Server returns JSON errors on denied access:
+Server returns JSON errors on denied or expired sessions:
 
 - `401 Unauthorized`
 - `403 Forbidden`
@@ -201,15 +212,26 @@ Server returns JSON errors on denied access:
 
 ## API Examples (curl)
 
-### 1) Daily cancelled/declined history
+### 1) Request a guest OTP
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/auth/request-otp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Aman",
+    "phone": "9999999999",
+    "role": "GUEST"
+  }'
+```
+
+### 2) Daily cancelled/declined history
 
 ```bash
 curl -X GET "http://localhost:8080/api/v1/rides/cancelled?date=2026-03-29&status=DRIVER_DECLINED" \
-  -H "X-User-Role: ADMIN" \
-  -H "X-Access-Key: dev-admin-key"
+  -H "Authorization: Bearer <admin_jwt>"
 ```
 
-### 2) File a complaint (guest)
+### 3) File a complaint (guest)
 
 ```bash
 curl -X POST "http://localhost:8080/api/v1/complaints" \
@@ -222,24 +244,22 @@ curl -X POST "http://localhost:8080/api/v1/complaints" \
   }'
 ```
 
-### 3) Close complaint (admin)
+### 4) Close complaint (admin)
 
 ```bash
 curl -X PUT "http://localhost:8080/api/v1/complaints/12/close" \
-  -H "X-User-Role: ADMIN" \
-  -H "X-Access-Key: dev-admin-key" \
+  -H "Authorization: Bearer <admin_jwt>" \
   -H "Content-Type: application/json" \
   -d '{
     "closedBy": "Event Admin"
   }'
 ```
 
-### 4) Upload event image (admin)
+### 5) Upload event image (admin)
 
 ```bash
 curl -X POST "http://localhost:8080/api/v1/events/images" \
-  -H "X-User-Role: ADMIN" \
-  -H "X-Access-Key: dev-admin-key" \
+  -H "Authorization: Bearer <admin_jwt>" \
   -F "file=@/absolute/path/to/event-banner.jpg"
 ```
 
@@ -251,13 +271,12 @@ Sample response:
 }
 ```
 
-### 5) Create event with uploaded image URL
+### 6) Create event with uploaded image URL
 
 ```bash
 curl -X POST "http://localhost:8080/api/v1/events" \
   -H "Content-Type: application/json" \
-  -H "X-User-Role: ADMIN" \
-  -H "X-Access-Key: dev-admin-key" \
+  -H "Authorization: Bearer <admin_jwt>" \
   -d '{
     "title": "Sponsor Meetup",
     "description": "Networking with sponsors",
@@ -275,7 +294,7 @@ curl -X POST "http://localhost:8080/api/v1/events" \
 
 ```bash
 cd backend
-mvn spring-boot:run
+SPRING_PROFILES_ACTIVE=seed mvn spring-boot:run
 ```
 
 Backend runs on `http://localhost:8080`.
@@ -304,6 +323,12 @@ Frontend runs on `http://localhost:5173`.
 ### Environment Variables (recommended)
 
 ```bash
+export JWT_SECRET=<your_long_random_secret>
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD=change-me
+export ADMIN_PHONE=9900000000
+export ADMIN_NAME="Event Admin"
+export CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 export VAPID_PUBLIC_KEY=<your_public_key>
 export VAPID_PRIVATE_KEY=<your_private_key>
 export VAPID_SUBJECT=mailto:support@event-transport.com
@@ -324,7 +349,7 @@ web-push generate-vapid-keys
 - Backend validates MIME type (`jpg/png/webp`), max size (5MB), and sanitizes file names.
 - If no image is uploaded, backend applies default image `/images/default-event.svg`.
 
-## Phase D Verification Steps
+## Phase D / E Verification Steps
 
 ```bash
 cd backend
@@ -333,7 +358,7 @@ mvn test
 
 ```bash
 cd backend
-mvn spring-boot:run
+SPRING_PROFILES_ACTIVE=seed mvn spring-boot:run
 ```
 
 ```bash
@@ -344,14 +369,16 @@ npm run build
 
 Manual checks:
 
+- Open `/` and verify guest OTP login, driver OTP login, and admin login all route to `/home`, `/driver`, or `/admin`.
 - Open `/admin` and verify Cancelled Queue + Complaints filters and CSV export buttons.
-- Verify unauthorized fallback appears if admin/driver keys are invalid.
+- Verify unauthorized fallback appears if the JWT is missing/expired/invalid.
 - Upload invalid event image type/size and confirm validation error.
+- Try creating a ride with more than 4 passengers through the API and confirm validation fails with JSON details.
 - Create/close complaints and verify lifecycle remains `OPEN` -> `CLOSED`.
 
 ## Seed Data
 
-On first run, the backend seeds:
+When the backend runs with `SPRING_PROFILES_ACTIVE=seed`, it seeds:
 
 - 1 main venue
 - 30 hotels + `Others`
@@ -369,14 +396,21 @@ On first run, the backend seeds:
 cd backend
 docker build -t event-transport .
 docker run -p 8080:8080 \
+  -e PORT=8080 \
   -e DATABASE_URL=jdbc:postgresql://host:5432/dispatchdb \
-  -e DB_USERNAME=user \
-  -e DB_PASSWORD=pass \
+  -e JWT_SECRET=replace-with-a-long-random-secret \
+  -e ADMIN_USERNAME=admin \
+  -e ADMIN_PASSWORD=change-me \
+  -e ADMIN_PHONE=9900000000 \
+  -e ADMIN_NAME="Event Admin" \
+  -e CORS_ALLOWED_ORIGINS=https://your-frontend.example.com \
   -e VAPID_PUBLIC_KEY=... \
   -e VAPID_PRIVATE_KEY=... \
   -e VAPID_SUBJECT=mailto:support@event-transport.com \
   event-transport
 ```
+
+For Railway-style deployments, `backend/src/main/resources/application-prod.properties` reads `DATABASE_URL`, `JWT_SECRET`, and `PORT` directly from the runtime environment.
 
 ### Frontend (production build)
 

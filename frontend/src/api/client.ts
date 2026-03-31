@@ -1,9 +1,7 @@
 import axios from 'axios';
+import { clearAuthSession, getAuthToken, type AuthSession, type UserRole } from '../lib/auth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-const ADMIN_ACCESS_KEY = import.meta.env.VITE_ADMIN_ACCESS_KEY || 'dev-admin-key';
-const DRIVER_ACCESS_KEY = import.meta.env.VITE_DRIVER_ACCESS_KEY || 'dev-driver-key';
-const GUEST_ACCESS_KEY = import.meta.env.VITE_GUEST_ACCESS_KEY || 'dev-guest-key';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -12,33 +10,11 @@ const api = axios.create({
   },
 });
 
-type ApiRole = 'ADMIN' | 'DRIVER' | 'GUEST';
-
-const getRoleContext = (): { role: ApiRole; phone?: string; accessKey: string } => {
-  if (typeof window === 'undefined') {
-    return { role: 'GUEST', accessKey: GUEST_ACCESS_KEY };
-  }
-
-  const path = window.location.pathname;
-  if (path.startsWith('/admin')) {
-    return { role: 'ADMIN', accessKey: ADMIN_ACCESS_KEY };
-  }
-  if (path.startsWith('/driver')) {
-    const phone = localStorage.getItem('driverPhone') || undefined;
-    return { role: 'DRIVER', phone, accessKey: DRIVER_ACCESS_KEY };
-  }
-
-  const guestPhone = localStorage.getItem('guestPhone') || undefined;
-  return { role: 'GUEST', phone: guestPhone, accessKey: GUEST_ACCESS_KEY };
-};
-
 api.interceptors.request.use((config) => {
-  const roleContext = getRoleContext();
+  const token = getAuthToken();
   config.headers = config.headers || {};
-  config.headers['X-User-Role'] = roleContext.role;
-  config.headers['X-Access-Key'] = roleContext.accessKey;
-  if (roleContext.phone) {
-    config.headers['X-User-Phone'] = roleContext.phone;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -48,7 +24,11 @@ api.interceptors.response.use(
   (error) => {
     const status = error?.response?.status;
     if (typeof window !== 'undefined' && (status === 401 || status === 403)) {
+      clearAuthSession();
       window.dispatchEvent(new CustomEvent('api-unauthorized', { detail: { status } }));
+      if (window.location.pathname !== '/') {
+        window.location.assign('/');
+      }
     }
     return Promise.reject(error);
   }
@@ -58,6 +38,38 @@ export const isUnauthorizedError = (error: unknown) => {
   const status = (error as { response?: { status?: number } })?.response?.status;
   return status === 401 || status === 403;
 };
+
+export interface RequestOtpPayload {
+  name?: string;
+  phone: string;
+  role: Exclude<UserRole, 'ADMIN'>;
+}
+
+export interface RequestOtpResponse {
+  message: string;
+  otp: string;
+  expiresAt: string;
+}
+
+export interface VerifyOtpPayload {
+  phone: string;
+  otp: string;
+  role: Exclude<UserRole, 'ADMIN'>;
+}
+
+export interface AdminLoginPayload {
+  username: string;
+  password: string;
+}
+
+export const requestOtp = (payload: RequestOtpPayload) =>
+  api.post<RequestOtpResponse>('/api/v1/auth/request-otp', payload);
+
+export const verifyOtp = (payload: VerifyOtpPayload) =>
+  api.post<AuthSession>('/api/v1/auth/verify-otp', payload);
+
+export const adminLogin = (payload: AdminLoginPayload) =>
+  api.post<AuthSession>('/api/v1/auth/admin-login', payload);
 
 // === Types ===
 
@@ -200,7 +212,7 @@ export interface PushSubscriptionPayload {
   'keys.p256dh': string;
   'keys.auth': string;
   userPhone: string;
-  userType: 'ADMIN' | 'DRIVER' | 'GUEST';
+  userType: UserRole;
 }
 
 // === Ride Endpoints ===

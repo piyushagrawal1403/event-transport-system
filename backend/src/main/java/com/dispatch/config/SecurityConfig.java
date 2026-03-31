@@ -41,14 +41,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/h2-console/**", "/uploads/**", "/images/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/rides").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/rides/guest", "/api/v1/rides/trip/**").permitAll()
+                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/rides/trip/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/events/**", "/api/v1/locations", "/api/v1/config").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/notifications", "/api/v1/push/vapid-public-key").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/push/subscribe", "/api/v1/push/unsubscribe", "/api/v1/complaints").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/rides", "/api/v1/complaints").hasRole("GUEST")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/rides/guest").hasAnyRole("GUEST", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/push/subscribe", "/api/v1/push/unsubscribe").authenticated()
 
                         .requestMatchers(HttpMethod.GET, "/api/v1/rides/pending", "/api/v1/rides/ongoing", "/api/v1/rides/cancelled").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/rides/*").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/rides/*").hasAnyRole("ADMIN", "GUEST")
                         .requestMatchers(HttpMethod.GET, "/api/v1/rides/cab/*", "/api/v1/rides/cab/*/completed").hasAnyRole("ADMIN", "DRIVER")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/rides/*/accept", "/api/v1/rides/*/deny").hasRole("DRIVER")
 

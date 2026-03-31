@@ -4,6 +4,7 @@ import { MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut,
 import { createRide, getLocations, getGuestRides, type Location } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
+import { clearAuthSession, getGuestIdentity } from '../../lib/auth';
 
 const MAX_CAB_CAPACITY = 4;
 
@@ -17,8 +18,7 @@ export default function RequestRide() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const guestName = localStorage.getItem('guestName') || '';
-  const guestPhone = localStorage.getItem('guestPhone') || '';
+  const { name: guestName, phone: guestPhone } = getGuestIdentity();
 
   useEffect(() => {
     if (!guestName || !guestPhone) {
@@ -77,8 +77,7 @@ export default function RequestRide() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('guestName');
-    localStorage.removeItem('guestPhone');
+    clearAuthSession();
     navigate('/');
   };
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Car, Phone, LogIn, Navigation, MapPin, ChevronDown, ChevronUp,
+  Car, Phone, Navigation, MapPin, ChevronDown, ChevronUp,
   Award, Clock, CheckCircle, XCircle, KeyRound, Flag
 } from 'lucide-react';
 import {
@@ -9,11 +10,12 @@ import {
   isUnauthorizedError,
   type Cab, type RideRequest
 } from '../../api/client';
+import { clearAuthSession, getDriverPhone } from '../../lib/auth';
 import { pushNotificationService } from '../../services/PushNotificationService';
 
 export default function DriverDashboard() {
-  const [phone, setPhone] = useState('');
-  const [loggedIn, setLoggedIn] = useState(false);
+  const navigate = useNavigate();
+  const phone = getDriverPhone();
   const [myCab, setMyCab] = useState<Cab | null>(null);
   const [activeTrips, setActiveTrips] = useState<RideRequest[]>([]);
   const [completedRides, setCompletedRides] = useState<RideRequest[]>([]);
@@ -54,12 +56,7 @@ export default function DriverDashboard() {
   };
 
   useEffect(() => {
-    const savedPhone = localStorage.getItem('driverPhone');
-    if (savedPhone) { setPhone(savedPhone); setLoggedIn(true); }
-  }, []);
-
-  useEffect(() => {
-    if (!loggedIn || !phone) return;
+    if (!phone) return;
 
     let active = true;
     const ensureDriverPushSubscription = async () => {
@@ -87,10 +84,10 @@ export default function DriverDashboard() {
 
     ensureDriverPushSubscription();
     return () => { active = false; };
-  }, [loggedIn, phone]);
+  }, [phone]);
 
   useEffect(() => {
-    if (!loggedIn) return;
+    if (!phone) return;
 
     const fetchCabs = async () => {
       try {
@@ -125,37 +122,7 @@ export default function DriverDashboard() {
     const interval = setInterval(fetchCabs, 8000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedIn, phone]);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (phone.trim()) {
-      const sanitized = sanitizePhone(phone.trim());
-
-      let permissionGranted = false;
-      try {
-        permissionGranted = await pushNotificationService.requestPermission();
-        if (permissionGranted) {
-          await pushNotificationService.subscribeUser(sanitized, 'DRIVER', {
-            permissionAlreadyGranted: true,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to enable push notifications during driver login:', error);
-      }
-
-      localStorage.setItem('driverPhone', sanitized);
-      setPhone(sanitized);
-      setUnauthorized(false);
-      setLoggedIn(true);
-
-      if (!permissionGranted) {
-        window.setTimeout(() => {
-          alert('Push notifications were not enabled. For localhost testing, use a regular browser window instead of incognito/private mode and allow notifications for this site.');
-        }, 0);
-      }
-    }
-  };
+  }, [phone]);
 
   // ── Accept / Deny handlers ────────────────────────────────────────────────
 
@@ -265,42 +232,6 @@ export default function DriverDashboard() {
       setCompletingRideId(null);
     }
   };
-
-  // ── Login screen ──────────────────────────────────────────────────────────
-
-  if (!loggedIn) {
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 flex items-center justify-center p-4">
-          <div className="w-full max-w-md">
-            <div className="text-center mb-8">
-              <Car className="w-12 h-12 text-white mx-auto mb-3" />
-              <h1 className="text-2xl font-bold text-white">Driver Login</h1>
-              <p className="text-indigo-200 mt-1">Enter your registered phone number</p>
-            </div>
-            <form onSubmit={handleLogin} className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Enter your phone number"
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                    required
-                />
-              </div>
-              <button
-                  type="submit"
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2"
-              >
-                <LogIn className="w-5 h-5" />
-                Login
-              </button>
-            </form>
-          </div>
-        </div>
-    );
-  }
 
   if (unauthorized) {
     return (
@@ -453,7 +384,7 @@ export default function DriverDashboard() {
               {myCab && <p className="text-indigo-200 text-sm">{myCab.driverName} · {myCab.licensePlate}</p>}
             </div>
             <button
-                onClick={() => { localStorage.removeItem('driverPhone'); setLoggedIn(false); setPhone(''); }}
+                onClick={() => { clearAuthSession(); navigate('/'); }}
                 className="text-sm bg-indigo-700 hover:bg-indigo-800 px-3 py-1.5 rounded-lg transition"
             >
               Logout

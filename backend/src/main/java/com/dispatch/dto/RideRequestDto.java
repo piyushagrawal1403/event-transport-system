@@ -1,8 +1,10 @@
 package com.dispatch.dto;
 
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 
 public class RideRequestDto {
 
@@ -10,10 +12,12 @@ public class RideRequestDto {
     private String guestName;
 
     @NotBlank(message = "Guest phone is required")
+    @Pattern(regexp = "^[0-9]{10}$", message = "Guest phone must be exactly 10 digits")
     private String guestPhone;
 
     @NotNull(message = "Passenger count is required")
     @Min(value = 1, message = "At least 1 passenger required")
+    @Max(value = 4, message = "Passenger count must not exceed 4")
     private Integer passengerCount;
 
     @NotBlank(message = "Direction is required")

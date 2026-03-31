@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Car, Users, Clock, MapPin, CheckCircle2, AlertTriangle,
   RefreshCw, Send, ChevronDown, ChevronUp, Navigation, Award, Flag, Bell, BellRing,
-  Settings, Save, Phone, User, X, MessageSquare, Gauge
+  Settings, Save, Phone, User, X, MessageSquare, Gauge, LogOut
 } from 'lucide-react';
 import {
   getPendingRides, getCabs, assignRides, getOngoingRides, getEvents, getLocations, cancelRide,
@@ -13,6 +14,7 @@ import {
   type RideRequest, type Cab, type EventItinerary, type Location, type DriverAnalytics,
   type Complaint, type CancelledQueueEntry, type RideIncidentType, type ComplaintStatus
 } from '../../api/client';
+import { clearAuthSession, getAuthSession } from '../../lib/auth';
 import { pushNotificationService } from '../../services/PushNotificationService';
 
 interface LocationGroup {
@@ -38,6 +40,9 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const adminSession = getAuthSession();
+  const adminPhone = adminSession?.user.phone || 'admin';
   const [groups, setGroups] = useState<LocationGroup[]>([]);
   const [cabs, setCabs] = useState<Cab[]>([]);
   const [selectedRides, setSelectedRides] = useState<Map<number, number>>(new Map());
@@ -190,14 +195,14 @@ export default function Dashboard() {
     setAdminPushPermission(permission);
 
     if (permission === 'granted') {
-      const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+      const subscribed = await pushNotificationService.subscribeUser(adminPhone, 'ADMIN', {
         permissionAlreadyGranted: true,
       });
       setAdminPushEnabled(subscribed);
     } else {
       setAdminPushEnabled(false);
     }
-  }, []);
+  }, [adminPhone]);
 
   // Keep admin notifications auto-on by re-checking subscription state
   useEffect(() => {
@@ -237,7 +242,7 @@ export default function Dashboard() {
         return;
       }
 
-      const subscribed = await pushNotificationService.subscribeUser('admin', 'ADMIN', {
+      const subscribed = await pushNotificationService.subscribeUser(adminPhone, 'ADMIN', {
         permissionAlreadyGranted: true,
       });
       setAdminPushEnabled(subscribed);
@@ -424,72 +429,88 @@ export default function Dashboard() {
   return (
       <div className="min-h-screen bg-gray-900 text-white">
         {/* Header */}
-        <div className="bg-gray-800 border-b border-gray-700 px-4 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold">Dispatch Dashboard</h1>
-              <p className="text-gray-400 text-sm">
-                {groups.reduce((sum, g) => sum + g.rides.length, 0)} pending · {availableCabs.length} cabs free
-              </p>
+        <div className="sticky top-0 z-20 border-b border-gray-700/80 bg-gray-900/90 px-3 py-3 backdrop-blur sm:px-4">
+          <div className="max-w-7xl mx-auto space-y-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">Dispatch Dashboard</h1>
+                <p className="mt-0.5 text-xs text-gray-400 sm:text-sm">
+                  {groups.reduce((sum, g) => sum + g.rides.length, 0)} pending · {availableCabs.length} cabs free
+                </p>
+              </div>
+              <div className="hidden sm:inline text-xs text-gray-500 whitespace-nowrap">Updated {lastRefresh.toLocaleTimeString()}</div>
             </div>
-            <div className="flex items-center gap-2">
-              {/* Notification status badge — hidden on xs */}
-              <span className={`hidden md:inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                adminPushEnabled
-                  ? 'bg-green-900 text-green-200'
-                  : adminPushPermission === 'denied'
-                    ? 'bg-red-900 text-red-200'
-                    : 'bg-yellow-900 text-yellow-200'
-              }`}>
-                {adminPushEnabled ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
-                {adminPushEnabled
-                  ? 'Notifications on'
-                  : adminPushPermission === 'denied'
-                    ? 'Blocked'
-                    : adminPushPermission === 'unsupported'
-                      ? 'Unsupported'
-                      : 'Off'}
-              </span>
-              {!adminPushEnabled && adminPushPermission !== 'unsupported' && (
-                <button
-                  onClick={handleEnableAdminNotifications}
-                  disabled={enablingAdminPush}
-                  title={enablingAdminPush ? 'Enabling...' : 'Enable notifications'}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2 py-2 sm:px-3 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Bell className="w-4 h-4" />
-                  <span className="hidden sm:inline">
-                    {enablingAdminPush ? 'Enabling...' : 'Enable alerts'}
-                  </span>
-                </button>
-              )}
-              {adminPushEnabled && (
-                <span className="inline-flex items-center sm:hidden">
-                  <BellRing className="w-4 h-4 text-green-400" />
-                </span>
-              )}
-              <span className="hidden sm:inline text-xs text-gray-500">Updated {lastRefresh.toLocaleTimeString()}</span>
+
+            <div className="grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:justify-end sm:gap-2">
               <button
                 onClick={() => setShowComplaints((current) => !current)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 px-3 py-2 text-sm font-medium transition"
+                className="relative inline-flex h-9 items-center justify-center rounded-lg bg-gray-800 px-2 text-xs font-medium transition hover:bg-gray-700 sm:h-auto sm:gap-1.5 sm:px-3 sm:py-2 sm:text-sm"
                 title="Complaints"
               >
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="h-4 w-4" />
                 <span className="hidden md:inline">Complaints</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${openComplaintsCount > 0 ? 'bg-yellow-900 text-yellow-300' : 'bg-gray-600 text-gray-200'}`}>
+                <span className={`absolute -right-1 -top-1 rounded-full px-1.5 py-0.5 text-[10px] sm:static sm:ml-0.5 sm:text-xs ${openComplaintsCount > 0 ? 'bg-yellow-900 text-yellow-300' : 'bg-gray-600 text-gray-200'}`}>
                   {openComplaintsCount}
                 </span>
               </button>
-              <button onClick={fetchData} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition" title="Refresh">
-                <RefreshCw className="w-4 h-4" />
+
+              <button
+                onClick={fetchData}
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-gray-800 px-2 transition hover:bg-gray-700 sm:h-auto sm:px-3 sm:py-2"
+                title="Refresh"
+              >
+                <RefreshCw className="h-4 w-4" />
               </button>
+
               <button
                 onClick={() => setShowSettings(true)}
-                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-gray-800 px-2 transition hover:bg-gray-700 sm:h-auto sm:px-3 sm:py-2"
                 title="Settings"
               >
-                <Settings className="w-4 h-4" />
+                <Settings className="h-4 w-4" />
               </button>
+
+              <button
+                onClick={() => { clearAuthSession(); navigate('/'); }}
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-gray-800 px-2 text-xs font-medium transition hover:bg-gray-700 sm:h-auto sm:gap-1.5 sm:px-3 sm:py-2 sm:text-sm"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="hidden md:inline">Logout</span>
+              </button>
+
+              <div className="col-span-4 mt-0.5 flex flex-wrap items-center justify-between gap-1.5 sm:col-span-full sm:mt-0 sm:justify-end sm:gap-2">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium sm:text-xs ${
+                  adminPushEnabled
+                    ? 'bg-green-900/70 text-green-200'
+                    : adminPushPermission === 'denied'
+                      ? 'bg-red-900/70 text-red-200'
+                      : 'bg-yellow-900/70 text-yellow-200'
+                }`}>
+                  {adminPushEnabled ? <BellRing className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                  {adminPushEnabled
+                    ? 'Alerts on'
+                    : adminPushPermission === 'denied'
+                      ? 'Blocked'
+                      : adminPushPermission === 'unsupported'
+                        ? 'Unsupported'
+                        : 'Alerts off'}
+                </span>
+
+                {!adminPushEnabled && adminPushPermission !== 'unsupported' && (
+                  <button
+                    onClick={handleEnableAdminNotifications}
+                    disabled={enablingAdminPush}
+                    title={enablingAdminPush ? 'Enabling...' : 'Enable notifications'}
+                    className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:text-xs"
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    {enablingAdminPush ? 'Enabling...' : 'Enable alerts'}
+                  </button>
+                )}
+
+                <span className="text-[11px] text-gray-500 sm:hidden">Updated {lastRefresh.toLocaleTimeString()}</span>
+              </div>
             </div>
           </div>
         </div>

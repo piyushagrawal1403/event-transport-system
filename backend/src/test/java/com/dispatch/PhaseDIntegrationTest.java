@@ -9,16 +9,21 @@ import com.dispatch.model.RideDirection;
 import com.dispatch.model.RideIncidentType;
 import com.dispatch.model.RideRequest;
 import com.dispatch.model.RideStatus;
+import com.dispatch.model.User;
+import com.dispatch.model.UserRole;
 import com.dispatch.repository.CabRepository;
 import com.dispatch.repository.LocationRepository;
 import com.dispatch.repository.RideRequestRepository;
+import com.dispatch.repository.UserRepository;
 import com.dispatch.service.ComplaintService;
+import com.dispatch.service.JwtService;
 import com.dispatch.service.RideIncidentService;
 import com.dispatch.service.RideService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("seed")
 @Transactional
 class PhaseDIntegrationTest {
 
@@ -56,6 +62,12 @@ class PhaseDIntegrationTest {
 
     @Autowired
     private LocationRepository locationRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JwtService jwtService;
 
     @Autowired
     private MockMvc mockMvc;
@@ -118,9 +130,14 @@ class PhaseDIntegrationTest {
         rideRequestRepository.save(rideA);
         rideRequestRepository.save(rideB);
 
+        User admin = new User();
+        admin.setName("QA Admin");
+        admin.setPhone("9000000001");
+        admin.setRole(UserRole.ADMIN);
+        String token = jwtService.generateToken(userRepository.save(admin));
+
         mockMvc.perform(get("/api/v1/cabs/{cabId}/analytics", savedCab.getId())
-                        .header("X-User-Role", "ADMIN")
-                        .header("X-Access-Key", "dev-admin-key"))
+                        .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalKm").value(25.5))
                 .andExpect(jsonPath("$.tripsCompleted").value(3))

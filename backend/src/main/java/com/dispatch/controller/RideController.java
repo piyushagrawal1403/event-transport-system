@@ -6,9 +6,11 @@ import com.dispatch.model.RideIncidentType;
 import com.dispatch.model.RideRequest;
 import com.dispatch.service.DispatchService;
 import com.dispatch.service.RideService;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
+@Validated
 @RequestMapping("/api/v1/rides")
 public class RideController {
 
@@ -39,7 +42,8 @@ public class RideController {
     }
 
     @GetMapping("/guest")
-    public ResponseEntity<List<RideRequest>> getGuestRides(@RequestParam String phone) {
+    public ResponseEntity<List<RideRequest>> getGuestRides(
+            @RequestParam @Pattern(regexp = "^[0-9]{10}$", message = "Phone must be exactly 10 digits") String phone) {
         return ResponseEntity.ok(rideService.getGuestActiveRides(phone));
     }
 

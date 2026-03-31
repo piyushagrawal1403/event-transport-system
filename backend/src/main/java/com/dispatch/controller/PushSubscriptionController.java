@@ -11,7 +11,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/push")
-@CrossOrigin(origins = "*")
 public class PushSubscriptionController {
 
     @Value("${vapid.public-key:}")

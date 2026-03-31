@@ -57,20 +57,19 @@ public class PushNotificationService {
         String normalizedUserType = normalizeUserType(userType);
         String normalizedUserPhone = normalizeUserPhone(userPhone, userType);
         try {
-            // Identity-based upsert: same endpoint may legitimately subscribe as different roles/users.
-            var existing = pushSubscriptionRepository.findByEndpointAndUserTypeAndUserPhone(
-                    endpoint,
-                    normalizedUserType,
-                    normalizedUserPhone
-            );
-            if (existing.isPresent()) {
-                PushSubscription subscription = existing.get();
+            // Endpoint rebind: one browser endpoint must map to one active identity at a time.
+            List<PushSubscription> existingByEndpoint = pushSubscriptionRepository.findAllByEndpoint(endpoint);
+            if (!existingByEndpoint.isEmpty()) {
+                PushSubscription subscription = existingByEndpoint.get(0);
                 subscription.setP256dh(p256dh);
                 subscription.setAuth(auth);
                 subscription.setUserPhone(normalizedUserPhone);
                 subscription.setUserType(normalizedUserType);
                 pushSubscriptionRepository.save(subscription);
-                logger.info("Updated push subscription for {} ({})", normalizedUserPhone, normalizedUserType);
+                for (int i = 1; i < existingByEndpoint.size(); i++) {
+                    pushSubscriptionRepository.delete(existingByEndpoint.get(i));
+                }
+                logger.info("Updated push subscription endpoint for {} ({})", normalizedUserPhone, normalizedUserType);
                 return;
             }
 
@@ -109,22 +108,49 @@ public class PushNotificationService {
         }
     }
 
+    public void unsubscribeUser(String endpoint, String userPhone, String userType) {
+        String normalizedUserType = normalizeUserType(userType);
+        String normalizedUserPhone = normalizeUserPhone(userPhone, userType);
+        try {
+            pushSubscriptionRepository.deleteByEndpointAndUserTypeAndUserPhone(endpoint, normalizedUserType, normalizedUserPhone);
+            logger.info("User {} ({}) unsubscribed from push notifications", normalizedUserPhone, normalizedUserType);
+        } catch (Exception e) {
+            logger.error("Failed to unsubscribe user", e);
+        }
+    }
+
     public void sendPushToAdmins(String title, String body) {
         sendPushToSubscriptions(pushSubscriptionRepository.findByUserType("ADMIN"), title, body, "admin");
+    }
+
+    /** Returns a safe summary of all subscriptions for the debug UI. */
+    public List<Map<String, Object>> getSubscriptionSummary() {
+        return pushSubscriptionRepository.findAll().stream().map(sub -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", sub.getId());
+            m.put("userType", sub.getUserType());
+            m.put("userPhone", sub.getUserPhone());
+            m.put("subscribedAt", sub.getSubscribedAt() != null ? sub.getSubscribedAt().toString() : null);
+            String ep = sub.getEndpoint();
+            m.put("endpointSuffix", ep != null && ep.length() > 30 ? "…" + ep.substring(ep.length() - 30) : ep);
+            return m;
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
+    /** Sends a test push notification to all ADMIN subscriptions.
+     *  Returns the number of subscriptions that were targeted. */
+    public int sendTestPushToAdmins() {
+        List<PushSubscription> subs = pushSubscriptionRepository.findByUserType("ADMIN");
+        if (!subs.isEmpty()) {
+            sendPushToSubscriptions(subs, "Test Notification ✓",
+                    "Push notifications are working correctly for admin.", "admin (test)");
+        }
+        return subs.size();
     }
 
     public void sendPushToDriver(String driverPhone, String title, String body) {
         String normalizedPhone = normalizeUserPhone(driverPhone, "DRIVER");
         List<PushSubscription> subscriptions = pushSubscriptionRepository.findByUserTypeAndUserPhone("DRIVER", normalizedPhone);
-
-        // Backward-compat fallback for legacy rows with stale userType casing or older subscription shape.
-        if (subscriptions.isEmpty()) {
-            subscriptions = pushSubscriptionRepository.findByUserPhone(normalizedPhone);
-            if (!subscriptions.isEmpty()) {
-                logger.warn("Driver push lookup used fallback for {} (legacy subscription rows detected)", normalizedPhone);
-            }
-        }
-
         sendPushToSubscriptions(subscriptions, title, body, "driver " + normalizedPhone);
     }
 
@@ -135,13 +161,6 @@ public class PushNotificationService {
     public void sendPushToGuest(String guestPhone, String title, String body) {
         String normalizedPhone = normalizeUserPhone(guestPhone, "GUEST");
         List<PushSubscription> subscriptions = pushSubscriptionRepository.findByUserTypeAndUserPhone("GUEST", normalizedPhone);
-
-        if (subscriptions.isEmpty()) {
-            subscriptions = pushSubscriptionRepository.findByUserPhone(normalizedPhone);
-            if (!subscriptions.isEmpty()) {
-                logger.warn("Guest push lookup used fallback for {} (legacy subscription rows detected)", normalizedPhone);
-            }
-        }
 
         sendPushToSubscriptions(subscriptions, title, body, "guest " + normalizedPhone);
     }

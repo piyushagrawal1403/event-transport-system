@@ -155,7 +155,8 @@ export default function GuestHome() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await pushNotificationService.unsubscribeUser();
     clearAuthSession();
     navigate('/');
   };
@@ -194,7 +195,7 @@ export default function GuestHome() {
             <p className="text-sm text-white/80">Hi, {guestName}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleLogout} className="p-2 hover:bg-white/20 rounded-lg transition">
+            <button onClick={() => { void handleLogout(); }} className="p-2 hover:bg-white/20 rounded-lg transition" type="button">
               <LogOut className="w-5 h-5" />
             </button>
           </div>

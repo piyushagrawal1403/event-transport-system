@@ -48,6 +48,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/rides", "/api/v1/complaints").hasRole("GUEST")
                         .requestMatchers(HttpMethod.GET, "/api/v1/rides/guest").hasAnyRole("GUEST", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/push/subscribe", "/api/v1/push/unsubscribe").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/push/admin/subscriptions").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/push/admin/test").hasRole("ADMIN")
 
                         .requestMatchers(HttpMethod.GET, "/api/v1/rides/pending", "/api/v1/rides/ongoing", "/api/v1/rides/cancelled").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/rides/*").hasAnyRole("ADMIN", "GUEST")

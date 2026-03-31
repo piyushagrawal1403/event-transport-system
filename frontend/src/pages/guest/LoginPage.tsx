@@ -6,6 +6,10 @@ import { getAuthSession, getHomeRouteForRole, saveAuthSession, type UserRole } f
 
 type ApiError = { response?: { data?: { error?: string; details?: Record<string, string> | string[] } } };
 
+const RECENT_GUEST_KEY = 'recentLogin.guest';
+const RECENT_DRIVER_KEY = 'recentLogin.driver';
+const RECENT_ADMIN_KEY = 'recentLogin.admin';
+
 function extractApiError(err: unknown, fallback: string): string {
   const data = (err as ApiError)?.response?.data;
   if (data?.details) {
@@ -45,6 +49,56 @@ export default function LoginPage() {
     setOtp('');
     setDemoOtp('');
     setError('');
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (role === 'GUEST') {
+      setUsername('');
+      setPassword('');
+      const saved = window.localStorage.getItem(RECENT_GUEST_KEY);
+      setName('');
+      setPhone('');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as { name?: string; phone?: string };
+          setName(parsed.name ?? '');
+          setPhone(parsed.phone ?? '');
+        } catch {
+          window.localStorage.removeItem(RECENT_GUEST_KEY);
+        }
+      }
+    } else if (role === 'DRIVER') {
+      setUsername('');
+      setPassword('');
+      const saved = window.localStorage.getItem(RECENT_DRIVER_KEY);
+      setPhone('');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as { phone?: string };
+          setPhone(parsed.phone ?? '');
+        } catch {
+          window.localStorage.removeItem(RECENT_DRIVER_KEY);
+        }
+      }
+      setName('');
+    } else {
+      setName('');
+      setPhone('');
+      const saved = window.localStorage.getItem(RECENT_ADMIN_KEY);
+      setUsername('');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as { username?: string };
+          setUsername(parsed.username ?? '');
+        } catch {
+          window.localStorage.removeItem(RECENT_ADMIN_KEY);
+        }
+      }
+      setName('');
+      setPhone('');
+    }
   }, [role]);
 
   const sanitizePhone = (value: string) => {
@@ -65,6 +119,11 @@ export default function LoginPage() {
       setPhone(sanitizedPhone);
       setOtpRequested(true);
       setDemoOtp(response.data.otp);
+      if (role === 'GUEST') {
+        window.localStorage.setItem(RECENT_GUEST_KEY, JSON.stringify({ name: name.trim(), phone: sanitizedPhone }));
+      } else {
+        window.localStorage.setItem(RECENT_DRIVER_KEY, JSON.stringify({ phone: sanitizedPhone }));
+      }
     } catch (err) {
       setError(extractApiError(err, 'Failed to request OTP. Please try again.'));
     } finally {
@@ -99,6 +158,7 @@ export default function LoginPage() {
 
     try {
       const response = await adminLogin({ username: username.trim(), password });
+      window.localStorage.setItem(RECENT_ADMIN_KEY, JSON.stringify({ username: username.trim() }));
       saveAuthSession(response.data);
       navigate(getHomeRouteForRole(response.data.user.role), { replace: true });
     } catch (err) {

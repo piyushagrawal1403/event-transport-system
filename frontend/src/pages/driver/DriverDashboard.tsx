@@ -233,6 +233,33 @@ export default function DriverDashboard() {
     }
   };
 
+  const handleToggleDuty = async () => {
+    if (!myCab || myCab.status === 'BUSY' || togglingStatus) {
+      return;
+    }
+
+    const nextStatus = myCab.status === 'OFFLINE' ? 'AVAILABLE' : 'OFFLINE';
+    const previousStatus = myCab.status;
+    setTogglingStatus(true);
+    setMyCab({ ...myCab, status: nextStatus });
+
+    try {
+      await updateCabStatus(phone, nextStatus);
+    } catch (err) {
+      setMyCab({ ...myCab, status: previousStatus });
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update status';
+      alert(msg);
+    } finally {
+      setTogglingStatus(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await pushNotificationService.unsubscribeUser();
+    clearAuthSession();
+    navigate('/');
+  };
+
   if (unauthorized) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 flex items-center justify-center p-6">
@@ -384,8 +411,9 @@ export default function DriverDashboard() {
               {myCab && <p className="text-indigo-200 text-sm">{myCab.driverName} · {myCab.licensePlate}</p>}
             </div>
             <button
-                onClick={() => { clearAuthSession(); navigate('/'); }}
+                onClick={() => { void handleLogout(); }}
                 className="text-sm bg-indigo-700 hover:bg-indigo-800 px-3 py-1.5 rounded-lg transition"
+                type="button"
             >
               Logout
             </button>
@@ -416,25 +444,16 @@ export default function DriverDashboard() {
                     </div>
                     <button
                         disabled={myCab.status === 'BUSY' || togglingStatus}
-                        onClick={async () => {
-                          setTogglingStatus(true);
-                          try {
-                            const newStatus = myCab.status === 'OFFLINE' ? 'AVAILABLE' : 'OFFLINE';
-                            await updateCabStatus(phone, newStatus);
-                            setMyCab({ ...myCab, status: newStatus });
-                          } catch (err) {
-                            const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to update status';
-                            alert(msg);
-                          } finally {
-                            setTogglingStatus(false);
-                          }
-                        }}
-                        className={`relative inline-flex items-center w-12 h-6 rounded-full transition ${
+                        onClick={() => { void handleToggleDuty(); }}
+                        className={`relative inline-flex h-8 w-14 touch-manipulation items-center rounded-full transition ${
                             myCab.status === 'BUSY' ? 'bg-gray-300 cursor-not-allowed' :
                                 myCab.status === 'OFFLINE' ? 'bg-gray-300' : 'bg-green-500'
                         }`}
+                        type="button"
+                        aria-label="Toggle duty status"
+                        aria-pressed={myCab.status !== 'OFFLINE'}
                     >
-                  <span className={`inline-block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                  <span className={`inline-block h-6 w-6 bg-white rounded-full shadow transform transition-transform ${
                       myCab.status !== 'OFFLINE' ? 'translate-x-6' : 'translate-x-0.5'
                   }`} />
                     </button>

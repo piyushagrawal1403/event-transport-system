@@ -351,6 +351,10 @@ web-push generate-vapid-keys
 
 ## Phase D / E Verification Steps
 
+Phase 1 risk remediation and multi-session QA workflow:
+
+- `docs/phase1-risk-remediation.md`
+
 ```bash
 cd backend
 mvn test

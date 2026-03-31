@@ -5,6 +5,7 @@ import { createRide, getLocations, getGuestRides, type Location } from '../../ap
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
 import { clearAuthSession, getGuestIdentity } from '../../lib/auth';
+import { pushNotificationService } from '../../services/PushNotificationService';
 
 const MAX_CAB_CAPACITY = 4;
 
@@ -76,7 +77,8 @@ export default function RequestRide() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await pushNotificationService.unsubscribeUser();
     clearAuthSession();
     navigate('/');
   };
@@ -92,7 +94,7 @@ export default function RequestRide() {
               <h1 className="text-lg font-bold">Request a Ride</h1>
               <p className="text-blue-200 text-sm">Hi, {guestName}</p>
             </div>
-            <button onClick={handleLogout} className="p-2 hover:bg-blue-700 rounded-lg transition">
+            <button onClick={() => { void handleLogout(); }} className="p-2 hover:bg-blue-700 rounded-lg transition" type="button">
               <LogOut className="w-5 h-5" />
             </button>
           </div>

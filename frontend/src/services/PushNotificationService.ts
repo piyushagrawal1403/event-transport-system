@@ -21,7 +21,6 @@ export class PushNotificationService {
       this.serviceWorkerRegistration = existingRegistration ?? await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
       this.serviceWorkerRegistration = await navigator.serviceWorker.getRegistration('/sw.js') ?? null;
-      console.log('Service Worker registered and ready');
     } catch (error) {
       console.error('Service Worker registration failed:', error);
     }
@@ -96,14 +95,13 @@ export class PushNotificationService {
 
       await subscribeToPush({
           endpoint: subscription.endpoint,
-          'keys.p256dh': this.arrayBufferToBase64(subscription.getKey('p256dh')),
-          'keys.auth': this.arrayBufferToBase64(subscription.getKey('auth')),
+          'keys.p256dh': this.arrayBufferToBase64Url(subscription.getKey('p256dh')),
+          'keys.auth': this.arrayBufferToBase64Url(subscription.getKey('auth')),
           userPhone,
           userType,
       });
 
       this.lastSubscriptionFingerprint = fingerprint;
-      console.log('User subscribed to push notifications');
       return true;
     } catch (error) {
       console.error('Failed to subscribe to push notifications:', error);
@@ -147,12 +145,15 @@ export class PushNotificationService {
     return outputArray;
   }
 
-  private arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+  private arrayBufferToBase64Url(buffer: ArrayBuffer | null): string {
     if (!buffer) return '';
     const bytes = new Uint8Array(buffer);
     let binary = '';
     bytes.forEach((byte) => (binary += String.fromCharCode(byte)));
-    return window.btoa(binary);
+    return window.btoa(binary)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
   }
 }
 

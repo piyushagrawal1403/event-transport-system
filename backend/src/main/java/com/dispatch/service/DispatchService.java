@@ -11,12 +11,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.security.SecureRandom;
 import java.util.*;
 
 @Service
 public class DispatchService {
 
     private static final Logger log = LoggerFactory.getLogger(DispatchService.class);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final CabRepository cabRepository;
     private final RideRequestRepository rideRequestRepository;
@@ -70,7 +72,7 @@ public class DispatchService {
         }
 
         // OTP is now used at trip START, not drop-off — field name kept for schema compat
-        String otp = String.format("%04d", new Random().nextInt(10000));
+        String otp = String.format("%04d", SECURE_RANDOM.nextInt(10000));
         String magicLinkId = UUID.randomUUID().toString();
 
         cab.setStatus(CabStatus.BUSY);

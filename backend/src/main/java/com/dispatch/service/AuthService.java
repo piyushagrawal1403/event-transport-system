@@ -11,12 +11,19 @@ import com.dispatch.model.User;
 import com.dispatch.model.UserRole;
 import com.dispatch.repository.CabRepository;
 import com.dispatch.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 @Service
 public class AuthService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     private final UserRepository userRepository;
     private final CabRepository cabRepository;
@@ -65,7 +72,8 @@ public class AuthService {
         }
 
         OtpStore.OtpChallenge challenge = otpStore.createChallenge(buildOtpKey(role, sanitizedPhone));
-        return new RequestOtpResponseDto("OTP generated successfully", challenge.otp(), challenge.expiresAt());
+        logger.info("OTP generated for {} ({}) — expires at {}", role, sanitizedPhone, challenge.expiresAt());
+        return new RequestOtpResponseDto("OTP sent successfully", challenge.otp(), challenge.expiresAt());
     }
 
     @Transactional
@@ -86,7 +94,13 @@ public class AuthService {
 
     @Transactional
     public AuthResponseDto adminLogin(AdminLoginDto dto) {
-        if (!adminUsername.equals(dto.username()) || !adminPassword.equals(dto.password())) {
+        boolean usernameMatch = MessageDigest.isEqual(
+                adminUsername.getBytes(StandardCharsets.UTF_8),
+                dto.username().getBytes(StandardCharsets.UTF_8));
+        boolean passwordMatch = MessageDigest.isEqual(
+                adminPassword.getBytes(StandardCharsets.UTF_8),
+                dto.password().getBytes(StandardCharsets.UTF_8));
+        if (!usernameMatch || !passwordMatch) {
             throw new IllegalArgumentException("Invalid admin credentials");
         }
 

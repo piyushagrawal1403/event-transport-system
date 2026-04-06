@@ -16,6 +16,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.annotation.PostConstruct;
+
 import java.security.GeneralSecurityException;
 import java.util.HashMap;
 import java.util.List;
@@ -28,27 +30,41 @@ public class PushNotificationService {
     @Autowired
     private PushSubscriptionRepository pushSubscriptionRepository;
 
-    @Value("${vapid.public-key}")
+    @Value("${vapid.public-key:}")
     private String vapidPublicKey;
 
-    @Value("${vapid.private-key}")
+    @Value("${vapid.private-key:}")
     private String vapidPrivateKey;
 
-    @Value("${vapid.subject}")
+    @Value("${vapid.subject:mailto:support@event-transport.com}")
     private String vapidSubject;
 
     private PushService pushService;
 
+    @PostConstruct
     public void initPushService() {
+        if (vapidPublicKey == null || vapidPublicKey.isBlank()) {
+            logger.warn("VAPID public key is not configured — push notifications will be disabled. "
+                    + "Set VAPID_PUBLIC_KEY environment variable or vapid.public-key property.");
+            return;
+        }
+        if (vapidPrivateKey == null || vapidPrivateKey.isBlank()) {
+            logger.warn("VAPID private key is not configured — push notifications will be disabled. "
+                    + "Set VAPID_PRIVATE_KEY environment variable or vapid.private-key property.");
+            return;
+        }
         try {
             // Register BouncyCastle provider for cryptographic operations
             if (java.security.Security.getProvider("BC") == null) {
                 java.security.Security.addProvider(new BouncyCastleProvider());
             }
-            
+
             this.pushService = new PushService(vapidPublicKey, vapidPrivateKey, vapidSubject);
+            logger.info("PushService initialized successfully (VAPID subject={})", vapidSubject);
         } catch (GeneralSecurityException e) {
-            logger.error("Failed to initialize PushService", e);
+            logger.error("Failed to initialize PushService — check VAPID key format", e);
+        } catch (Exception e) {
+            logger.error("Unexpected error initializing PushService", e);
         }
     }
 
@@ -172,10 +188,7 @@ public class PushNotificationService {
         }
 
         if (pushService == null) {
-            initPushService();
-        }
-        if (pushService == null) {
-            logger.warn("PushService is not available; skipping push for {}", audience);
+            logger.warn("PushService is not initialized — VAPID keys may be missing. Skipping push for {}", audience);
             return;
         }
 
@@ -193,9 +206,17 @@ public class PushNotificationService {
                         gson.toJson(payload).getBytes()
                 );
                 HttpResponse response = pushService.send(notification);
-                logger.debug("Push notification sent to {}, status: {}", audience, response.getStatusLine().getStatusCode());
+                int statusCode = response.getStatusLine().getStatusCode();
+                if (statusCode == 201 || statusCode == 200) {
+                    logger.info("Push notification delivered to {} (status {})", audience, statusCode);
+                } else if (statusCode == 410 || statusCode == 404) {
+                    logger.warn("Push subscription expired/invalid for {} (status {}), removing", audience, statusCode);
+                    pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
+                } else {
+                    logger.warn("Push notification to {} returned unexpected status {}", audience, statusCode);
+                }
             } catch (Exception e) {
-                logger.error("Failed to send push to endpoint: {}", sub.getEndpoint(), e);
+                logger.error("Failed to send push notification to {}", audience, e);
                 try {
                     pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
                 } catch (Exception ex) {

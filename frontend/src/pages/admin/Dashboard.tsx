@@ -86,13 +86,6 @@ export default function Dashboard() {
       const res = await assignRides({ cabId: selectedCabId, rideIds: Array.from(selectedRides.keys()) });
       setAssignResult({ magicLinkId: res.data.magicLinkId, otp: res.data.otp });
 
-      console.log('=== DISPATCH PAYLOAD ===');
-      console.log(`Driver: ${res.data.driverName}`);
-      console.log(`Phone: ${res.data.driverPhone}`);
-      console.log(`Cab: ${res.data.cabLicensePlate}`);
-      console.log(`Magic Link: ${window.location.origin}/d/${res.data.magicLinkId}`);
-      console.log(`OTP (given to guest): ${res.data.otp}`);
-      console.log('========================');
 
       setSelectedRides(new Map());
       setSelectedCabId(null);

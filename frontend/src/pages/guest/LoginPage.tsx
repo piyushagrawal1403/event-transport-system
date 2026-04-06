@@ -119,6 +119,7 @@ export default function LoginPage() {
       setPhone(sanitizedPhone);
       setOtpRequested(true);
       setDemoOtp(response.data.otp);
+      setOtp(response.data.otp); // auto-fill OTP for convenience
       if (role === 'GUEST') {
         window.localStorage.setItem(RECENT_GUEST_KEY, JSON.stringify({ name: name.trim(), phone: sanitizedPhone }));
       } else {
@@ -272,7 +273,7 @@ export default function LoginPage() {
               {otpRequested && (
                 <>
                   <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--w-border)', color: 'var(--w-muted)' }}>
-                    Demo OTP: <span className="font-mono font-bold tracking-[0.2em]" style={{ color: 'var(--w-accent-strong)' }}>{demoOtp}</span>
+                    Your OTP: <span className="font-mono font-bold tracking-[0.2em]" style={{ color: 'var(--w-accent-strong)' }}>{demoOtp}</span>
                   </div>
                   <div>
                     <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif", letterSpacing: '0.05em' }}>Enter OTP</label>

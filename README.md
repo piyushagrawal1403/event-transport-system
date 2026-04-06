@@ -394,7 +394,32 @@ When the backend runs with `SPRING_PROFILES_ACTIVE=seed`, it seeds:
 
 ## Deployment
 
-### Backend (Docker example)
+### Required Environment Variables
+
+| Variable | Required | Default | Notes |
+|----------|----------|---------|-------|
+| `DATABASE_URL` | ✅ | — | Must be `jdbc:postgresql://` form, or `postgres://` (auto-rewritten by `DataSourceConfig`) |
+| `JWT_SECRET` | ✅ | — | Min 32 chars; Render `generateValue: true` handles this |
+| `ADMIN_USERNAME` | ✅ | — | Admin login username |
+| `ADMIN_PASSWORD` | ✅ | — | Admin login password |
+| `ADMIN_PHONE` | ✅ | — | Phone used as admin push identity |
+| `ADMIN_NAME` | ⬜ | `Event Admin` | Display name |
+| `VAPID_PUBLIC_KEY` | ✅ | — | See VAPID generation below |
+| `VAPID_PRIVATE_KEY` | ✅ | — | See VAPID generation below |
+| `VAPID_SUBJECT` | ⬜ | `mailto:support@event-transport.com` | Contact URI for push provider |
+| `CORS_ALLOWED_ORIGINS` | ✅ | — | Exact Netlify URL, no trailing slash |
+| `JWT_EXPIRATION_MS` | ⬜ | `86400000` | Token TTL in ms (24 h) |
+| `PORT` | ⬜ | `8080` | Injected automatically by Render |
+
+### VAPID Key Generation
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Copy output to `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. Set `VAPID_SUBJECT` to `mailto:you@yourdomain.com`. Keys are permanent — do not rotate them without unsubscribing all existing push endpoints first.
+
+### Backend (Docker)
 
 ```bash
 cd backend
@@ -414,9 +439,24 @@ docker run -p 8080:8080 \
   event-transport
 ```
 
-For Railway-style deployments, `backend/src/main/resources/application-prod.properties` reads `DATABASE_URL`, `JWT_SECRET`, and `PORT` directly from the runtime environment.
+> **Note:** `DATABASE_URL` can use either the `jdbc:postgresql://` or `postgres://` scheme. The `DataSourceConfig` bean automatically rewrites `postgres://` to `jdbc:postgresql://` for Render compatibility.
 
-### Frontend (production build)
+### Render Setup Sequence
+
+1. Create PostgreSQL database first (copy connection string)
+2. Create web service from Docker Hub image or GitHub repo
+3. Set all env vars in the Render dashboard
+4. Deploy — watch logs for `Started DispatchApplication`
+5. Verify `/actuator/health` returns `{"status":"UP"}`
+
+> ⚠️ Render free PostgreSQL databases are deleted after 90 days. Upgrade before go-live.
+
+### Frontend (Netlify)
+
+1. Connect GitHub repo
+2. Confirm `netlify.toml` is detected (base dir = `frontend`)
+3. Set `VITE_API_URL` to your Render backend URL (Environment Variables in Netlify dashboard)
+4. Deploy — confirm SPA routing works on hard refresh
 
 ```bash
 cd frontend
@@ -425,3 +465,149 @@ npm run build
 ```
 
 Deploy `frontend/dist` to any static host (Netlify, S3 + CloudFront, etc.).
+
+### Post-deploy CORS Checklist
+
+- `CORS_ALLOWED_ORIGINS` on Render must exactly match your Netlify URL (e.g. `https://your-site.netlify.app`) — no trailing slash, no wildcard
+- Verify in browser DevTools Network tab that CORS headers are present on API responses
+
+### ⚠️ Ephemeral Uploads Warning
+
+Event images uploaded via the admin dashboard are stored in the container filesystem at `uploads/events/`. **This directory is wiped on every Render redeploy.** Uploaded images will be permanently lost. The fallback default image (`/images/default-event.svg`) will be served instead. This is acceptable for a demo but must be resolved before production by migrating to object storage (Cloudflare R2 or AWS S3).
+
+### GitHub Secrets Required for CI/CD
+
+| Secret | Job | Purpose |
+|--------|-----|---------|
+| `DOCKERHUB_USERNAME` | `deploy-backend` | Image tag namespace |
+| `DOCKERHUB_TOKEN` | `deploy-backend` | Registry auth |
+| `RENDER_DEPLOY_HOOK_URL` | `deploy-backend` | Triggers Render redeploy after push |
+| `NETLIFY_AUTH_TOKEN` | `deploy-frontend` | Netlify CLI auth |
+| `NETLIFY_SITE_ID` | `deploy-frontend` | Target site |
+| `VITE_API_URL` | `deploy-frontend`, `frontend` (build) | Baked into the Vite bundle at build time |
+
+### QR Code for App Download
+
+This is a PWA — users can "install" it directly from the browser. Generate a QR code pointing to your Netlify URL so guests/drivers can scan and open the app instantly.
+
+**Option A — CLI (saves a PNG file):**
+
+```bash
+npx qrcode -o qr-app.png "https://your-site.netlify.app"
+```
+
+**Option B — Terminal preview (prints QR to console):**
+
+```bash
+npx qrcode-terminal "https://your-site.netlify.app"
+```
+
+**Option C — API URL (paste in browser or embed in print materials):**
+
+```
+https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://your-site.netlify.app
+```
+
+> **Tip:** On mobile, after scanning the QR and opening the site, users will see a browser prompt to "Add to Home Screen" (or "Install App"). This gives them a native-app-like icon with offline support and push notifications.
+
+Place the generated QR image at event check-in desks, printed schedules, or welcome cards so guests can onboard in seconds.
+
+---
+
+## Complete Deployment Checklist
+
+Use this as a step-by-step walkthrough. Check off each item as you go.
+
+### Phase 1 — Preparation (local machine)
+
+- [ ] **1.** Generate VAPID keys:
+  ```bash
+  npx web-push generate-vapid-keys
+  ```
+  Save the **Public Key** and **Private Key** — you'll need both.
+
+- [ ] **2.** Decide on your admin credentials:
+  - `ADMIN_USERNAME` (e.g. `admin`)
+  - `ADMIN_PASSWORD` (use a strong password)
+  - `ADMIN_PHONE` (10-digit phone number)
+  - `ADMIN_NAME` (e.g. `Event Admin`)
+
+- [ ] **3.** Push all code to GitHub (`main` branch).
+
+### Phase 2 — Backend on Render
+
+- [ ] **4.** Go to [render.com](https://render.com) → **New** → **Blueprint**.
+- [ ] **5.** Connect your GitHub repo → Render detects `render.yaml`.
+- [ ] **6.** Render auto-creates a **PostgreSQL database** and a **Web Service**.
+- [ ] **7.** In the Render dashboard, fill in these env vars:
+
+  | Variable | Value |
+  |----------|-------|
+  | `ADMIN_USERNAME` | Your chosen username |
+  | `ADMIN_PASSWORD` | Your chosen password |
+  | `ADMIN_PHONE` | Your phone number |
+  | `ADMIN_NAME` | Display name |
+  | `VAPID_PUBLIC_KEY` | From step 1 |
+  | `VAPID_PRIVATE_KEY` | From step 1 |
+  | `VAPID_SUBJECT` | `mailto:your-email@example.com` |
+  | `CORS_ALLOWED_ORIGINS` | *(leave blank for now — set after step 12)* |
+
+  > `DATABASE_URL` and `JWT_SECRET` are auto-generated by Render.
+
+- [ ] **8.** Click **Deploy** → watch logs for `Started DispatchApplication`.
+- [ ] **9.** Verify health check: visit `https://your-backend.onrender.com/actuator/health`
+  - Expected: `{"status":"UP"}`
+- [ ] **10.** Copy your backend URL (e.g. `https://event-transport-backend.onrender.com`).
+
+### Phase 3 — Frontend on Netlify
+
+- [ ] **11.** Go to [netlify.com](https://netlify.com) → **Add new site** → **Import from Git**.
+- [ ] **12.** Connect your GitHub repo → Netlify detects `netlify.toml`.
+- [ ] **13.** Add environment variable in **Site settings → Environment variables**:
+
+  | Variable | Value |
+  |----------|-------|
+  | `VITE_API_URL` | `https://your-backend.onrender.com` (no trailing slash) |
+
+- [ ] **14.** Deploy → wait for build to succeed.
+- [ ] **15.** Copy your Netlify URL (e.g. `https://event-transport.netlify.app`).
+
+### Phase 4 — Wire CORS
+
+- [ ] **16.** Go back to **Render dashboard** → set `CORS_ALLOWED_ORIGINS` to your exact Netlify URL (no trailing slash).
+- [ ] **17.** Redeploy backend (or wait for next auto-deploy).
+
+### Phase 5 — Verify
+
+- [ ] **18.** Open Netlify URL in an **incognito window**.
+- [ ] **19.** Admin login → should redirect to `/admin`.
+- [ ] **20.** Push notification prompt should appear → grant permission.
+- [ ] **21.** Hard-refresh a non-root URL (e.g. `/admin`) → should load correctly (not 404).
+- [ ] **22.** Open DevTools → Network tab → verify API calls have no CORS errors.
+- [ ] **23.** Test guest OTP login and driver OTP login.
+
+### Phase 6 — QR Code & Distribution
+
+- [ ] **24.** Generate QR code:
+  ```bash
+  npx qrcode -o qr-app.png "https://your-site.netlify.app"
+  ```
+- [ ] **25.** Print or share the QR code at event check-in, welcome kits, or WhatsApp groups.
+- [ ] **26.** Instruct users: *"Scan → Open in browser → Tap 'Add to Home Screen' for the best experience."*
+
+### Phase 7 — CI/CD (optional)
+
+- [ ] **27.** In GitHub repo → **Settings → Secrets and variables → Actions**, add:
+
+  | Secret | Where to get it |
+  |--------|----------------|
+  | `DOCKERHUB_USERNAME` | Your Docker Hub account username |
+  | `DOCKERHUB_TOKEN` | Docker Hub → Account Settings → Security → New Access Token |
+  | `RENDER_DEPLOY_HOOK_URL` | Render → your service → Settings → Deploy Hook → copy URL |
+  | `NETLIFY_AUTH_TOKEN` | Netlify → User settings → Applications → New access token |
+  | `NETLIFY_SITE_ID` | Netlify → Site settings → General → Site ID |
+  | `VITE_API_URL` | Same Render backend URL from step 10 |
+
+- [ ] **28.** Push to `main` → CI runs tests → deploys automatically on success.
+
+

@@ -8,6 +8,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+// TODO: migrate to object storage (R2/S3) before production
 @Configuration
 public class UploadResourceConfig implements WebMvcConfigurer {
 

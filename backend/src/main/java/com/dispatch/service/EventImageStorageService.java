@@ -1,16 +1,19 @@
 package com.dispatch.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -18,20 +21,33 @@ import java.util.UUID;
 @Service
 public class EventImageStorageService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(EventImageStorageService.class);
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/jpg", "image/png", "image/webp");
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
 
     private final Path uploadDirectory;
     private final long maxFileBytes;
+    private final Environment environment;
 
     public EventImageStorageService(@Value("${app.upload.events-dir:uploads/events}") String uploadDir,
-                                    @Value("${app.upload.events-max-bytes:5242880}") long maxFileBytes) {
+                                    @Value("${app.upload.events-max-bytes:5242880}") long maxFileBytes,
+                                    Environment environment) {
         this.uploadDirectory = Paths.get(uploadDir).toAbsolutePath().normalize();
         this.maxFileBytes = maxFileBytes;
+        this.environment = environment;
         try {
             Files.createDirectories(this.uploadDirectory);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to initialize event upload directory", e);
+        }
+    }
+
+    @PostConstruct
+    void warnEphemeralUploads() {
+        if (Arrays.asList(environment.getActiveProfiles()).contains("prod")) {
+            log.warn("⚠ EVENT IMAGE UPLOADS ARE EPHEMERAL: {} is on the container filesystem and will be wiped on every Render redeploy. "
+                    + "Missing images will fall back to /images/default-event.svg. "
+                    + "Migrate to object storage (R2/S3) before production.", uploadDirectory);
         }
     }
 

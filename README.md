@@ -394,7 +394,32 @@ When the backend runs with `SPRING_PROFILES_ACTIVE=seed`, it seeds:
 
 ## Deployment
 
-### Backend (Docker example)
+### Required Environment Variables
+
+| Variable | Required | Default | Notes |
+|----------|----------|---------|-------|
+| `DATABASE_URL` | ✅ | — | Must be `jdbc:postgresql://` form, or `postgres://` (auto-rewritten by `DataSourceConfig`) |
+| `JWT_SECRET` | ✅ | — | Min 32 chars; Render `generateValue: true` handles this |
+| `ADMIN_USERNAME` | ✅ | — | Admin login username |
+| `ADMIN_PASSWORD` | ✅ | — | Admin login password |
+| `ADMIN_PHONE` | ✅ | — | Phone used as admin push identity |
+| `ADMIN_NAME` | ⬜ | `Event Admin` | Display name |
+| `VAPID_PUBLIC_KEY` | ✅ | — | See VAPID generation below |
+| `VAPID_PRIVATE_KEY` | ✅ | — | See VAPID generation below |
+| `VAPID_SUBJECT` | ⬜ | `mailto:support@event-transport.com` | Contact URI for push provider |
+| `CORS_ALLOWED_ORIGINS` | ✅ | — | Exact Netlify URL, no trailing slash |
+| `JWT_EXPIRATION_MS` | ⬜ | `86400000` | Token TTL in ms (24 h) |
+| `PORT` | ⬜ | `8080` | Injected automatically by Render |
+
+### VAPID Key Generation
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Copy output to `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. Set `VAPID_SUBJECT` to `mailto:you@yourdomain.com`. Keys are permanent — do not rotate them without unsubscribing all existing push endpoints first.
+
+### Backend (Docker)
 
 ```bash
 cd backend
@@ -414,9 +439,24 @@ docker run -p 8080:8080 \
   event-transport
 ```
 
-For Railway-style deployments, `backend/src/main/resources/application-prod.properties` reads `DATABASE_URL`, `JWT_SECRET`, and `PORT` directly from the runtime environment.
+> **Note:** `DATABASE_URL` can use either the `jdbc:postgresql://` or `postgres://` scheme. The `DataSourceConfig` bean automatically rewrites `postgres://` to `jdbc:postgresql://` for Render compatibility.
 
-### Frontend (production build)
+### Render Setup Sequence
+
+1. Create PostgreSQL database first (copy connection string)
+2. Create web service from Docker Hub image or GitHub repo
+3. Set all env vars in the Render dashboard
+4. Deploy — watch logs for `Started DispatchApplication`
+5. Verify `/actuator/health` returns `{"status":"UP"}`
+
+> ⚠️ Render free PostgreSQL databases are deleted after 90 days. Upgrade before go-live.
+
+### Frontend (Netlify)
+
+1. Connect GitHub repo
+2. Confirm `netlify.toml` is detected (base dir = `frontend`)
+3. Set `VITE_API_URL` to your Render backend URL (Environment Variables in Netlify dashboard)
+4. Deploy — confirm SPA routing works on hard refresh
 
 ```bash
 cd frontend
@@ -425,3 +465,24 @@ npm run build
 ```
 
 Deploy `frontend/dist` to any static host (Netlify, S3 + CloudFront, etc.).
+
+### Post-deploy CORS Checklist
+
+- `CORS_ALLOWED_ORIGINS` on Render must exactly match your Netlify URL (e.g. `https://your-site.netlify.app`) — no trailing slash, no wildcard
+- Verify in browser DevTools Network tab that CORS headers are present on API responses
+
+### ⚠️ Ephemeral Uploads Warning
+
+Event images uploaded via the admin dashboard are stored in the container filesystem at `uploads/events/`. **This directory is wiped on every Render redeploy.** Uploaded images will be permanently lost. The fallback default image (`/images/default-event.svg`) will be served instead. This is acceptable for a demo but must be resolved before production by migrating to object storage (Cloudflare R2 or AWS S3).
+
+### GitHub Secrets Required for CI/CD
+
+| Secret | Job | Purpose |
+|--------|-----|---------|
+| `DOCKERHUB_USERNAME` | `deploy-backend` | Image tag namespace |
+| `DOCKERHUB_TOKEN` | `deploy-backend` | Registry auth |
+| `RENDER_DEPLOY_HOOK_URL` | `deploy-backend` | Triggers Render redeploy after push |
+| `NETLIFY_AUTH_TOKEN` | `deploy-frontend` | Netlify CLI auth |
+| `NETLIFY_SITE_ID` | `deploy-frontend` | Target site |
+| `VITE_API_URL` | `deploy-frontend`, `frontend` (build) | Baked into the Vite bundle at build time |
+

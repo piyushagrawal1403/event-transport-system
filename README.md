@@ -398,8 +398,8 @@ When the backend runs with `SPRING_PROFILES_ACTIVE=seed`, it seeds:
 
 | Variable | Required | Default | Notes |
 |----------|----------|---------|-------|
-| `DATABASE_URL` | ✅ | — | Must be `jdbc:postgresql://` form, or `postgres://` (auto-rewritten by `DataSourceConfig`) |
-| `JWT_SECRET` | ✅ | — | Min 32 chars; Render `generateValue: true` handles this |
+| `DATABASE_URL` | ✅ | — | Auto-injected by Railway when you add a PostgreSQL service |
+| `JWT_SECRET` | ✅ | — | Min 32 chars; generate with `openssl rand -base64 32` |
 | `ADMIN_USERNAME` | ✅ | — | Admin login username |
 | `ADMIN_PASSWORD` | ✅ | — | Admin login password |
 | `ADMIN_PHONE` | ✅ | — | Phone used as admin push identity |
@@ -409,7 +409,7 @@ When the backend runs with `SPRING_PROFILES_ACTIVE=seed`, it seeds:
 | `VAPID_SUBJECT` | ⬜ | `mailto:support@event-transport.com` | Contact URI for push provider |
 | `CORS_ALLOWED_ORIGINS` | ✅ | — | Exact Netlify URL, no trailing slash |
 | `JWT_EXPIRATION_MS` | ⬜ | `86400000` | Token TTL in ms (24 h) |
-| `PORT` | ⬜ | `8080` | Injected automatically by Render |
+| `PORT` | ⬜ | `8080` | Injected automatically by Railway |
 
 ### VAPID Key Generation
 
@@ -439,23 +439,23 @@ docker run -p 8080:8080 \
   event-transport
 ```
 
-> **Note:** `DATABASE_URL` can use either the `jdbc:postgresql://` or `postgres://` scheme. The `DataSourceConfig` bean automatically rewrites `postgres://` to `jdbc:postgresql://` for Render compatibility.
+> **Note:** `DATABASE_URL` can use either the `jdbc:postgresql://` or `postgres://` scheme. The `DataSourceConfig` bean automatically rewrites `postgres://` to `jdbc:postgresql://` for Railway/Render compatibility.
 
-### Render Setup Sequence
+### Railway Setup Sequence
 
-1. Create PostgreSQL database first (copy connection string)
-2. Create web service from Docker Hub image or GitHub repo
-3. Set all env vars in the Render dashboard
-4. Deploy — watch logs for `Started DispatchApplication`
-5. Verify `/actuator/health` returns `{"status":"UP"}`
-
-> ⚠️ Render free PostgreSQL databases are deleted after 90 days. Upgrade before go-live.
+1. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
+2. Connect your GitHub repo → Railway auto-detects the Dockerfile
+3. Add a **PostgreSQL** service to the same project → Railway auto-injects `DATABASE_URL`
+4. Set all other env vars in the Railway service **Variables** tab
+5. Generate a domain: **Settings → Networking → Generate Domain**
+6. Deploy — watch logs for `Started DispatchApplication`
+7. Verify `/actuator/health` returns `{"status":"UP"}`
 
 ### Frontend (Netlify)
 
 1. Connect GitHub repo
 2. Confirm `netlify.toml` is detected (base dir = `frontend`)
-3. Set `VITE_API_URL` to your Render backend URL (Environment Variables in Netlify dashboard)
+3. Set `VITE_API_URL` to your Railway backend URL (Environment Variables in Netlify dashboard)
 4. Deploy — confirm SPA routing works on hard refresh
 
 ```bash
@@ -468,20 +468,19 @@ Deploy `frontend/dist` to any static host (Netlify, S3 + CloudFront, etc.).
 
 ### Post-deploy CORS Checklist
 
-- `CORS_ALLOWED_ORIGINS` on Render must exactly match your Netlify URL (e.g. `https://your-site.netlify.app`) — no trailing slash, no wildcard
+- `CORS_ALLOWED_ORIGINS` on Railway must exactly match your Netlify URL (e.g. `https://your-site.netlify.app`) — no trailing slash, no wildcard
 - Verify in browser DevTools Network tab that CORS headers are present on API responses
 
 ### ⚠️ Ephemeral Uploads Warning
 
-Event images uploaded via the admin dashboard are stored in the container filesystem at `uploads/events/`. **This directory is wiped on every Render redeploy.** Uploaded images will be permanently lost. The fallback default image (`/images/default-event.svg`) will be served instead. This is acceptable for a demo but must be resolved before production by migrating to object storage (Cloudflare R2 or AWS S3).
+Event images uploaded via the admin dashboard are stored in the container filesystem at `uploads/events/`. **This directory is wiped on every Railway redeploy.** Uploaded images will be permanently lost. The fallback default image (`/images/default-event.svg`) will be served instead. This is acceptable for a demo but must be resolved before production by migrating to object storage (Cloudflare R2 or AWS S3).
 
 ### GitHub Secrets Required for CI/CD
 
 | Secret | Job | Purpose |
 |--------|-----|---------|
-| `DOCKERHUB_USERNAME` | `deploy-backend` | Image tag namespace |
-| `DOCKERHUB_TOKEN` | `deploy-backend` | Registry auth |
-| `RENDER_DEPLOY_HOOK_URL` | `deploy-backend` | Triggers Render redeploy after push |
+| `RAILWAY_TOKEN` | `deploy-backend` | Railway API token for CLI deploy |
+| `RAILWAY_SERVICE_ID` | `deploy-backend` | Railway service ID for the backend |
 | `NETLIFY_AUTH_TOKEN` | `deploy-frontend` | Netlify CLI auth |
 | `NETLIFY_SITE_ID` | `deploy-frontend` | Target site |
 | `VITE_API_URL` | `deploy-frontend`, `frontend` (build) | Baked into the Vite bundle at build time |
@@ -534,15 +533,17 @@ Use this as a step-by-step walkthrough. Check off each item as you go.
 
 - [ ] **3.** Push all code to GitHub (`main` branch).
 
-### Phase 2 — Backend on Render
+### Phase 2 — Backend on Railway
 
-- [ ] **4.** Go to [render.com](https://render.com) → **New** → **Blueprint**.
-- [ ] **5.** Connect your GitHub repo → Render detects `render.yaml`.
-- [ ] **6.** Render auto-creates a **PostgreSQL database** and a **Web Service**.
-- [ ] **7.** In the Render dashboard, fill in these env vars:
+- [ ] **4.** Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**.
+- [ ] **5.** Connect your GitHub repo → Railway auto-detects the Dockerfile in `backend/`.
+- [ ] **6.** Add a **PostgreSQL** plugin: click **+ New** → **Database** → **PostgreSQL**.
+  - Railway auto-injects `DATABASE_URL` into your service.
+- [ ] **7.** Click on your backend service → **Variables** tab → add:
 
   | Variable | Value |
   |----------|-------|
+  | `JWT_SECRET` | Generate with `openssl rand -base64 32` |
   | `ADMIN_USERNAME` | Your chosen username |
   | `ADMIN_PASSWORD` | Your chosen password |
   | `ADMIN_PHONE` | Your phone number |
@@ -550,64 +551,64 @@ Use this as a step-by-step walkthrough. Check off each item as you go.
   | `VAPID_PUBLIC_KEY` | From step 1 |
   | `VAPID_PRIVATE_KEY` | From step 1 |
   | `VAPID_SUBJECT` | `mailto:your-email@example.com` |
-  | `CORS_ALLOWED_ORIGINS` | *(leave blank for now — set after step 12)* |
+  | `CORS_ALLOWED_ORIGINS` | *(leave blank for now — set after step 15)* |
 
-  > `DATABASE_URL` and `JWT_SECRET` are auto-generated by Render.
+  > `DATABASE_URL` is auto-injected by Railway. No need to set it manually.
 
-- [ ] **8.** Click **Deploy** → watch logs for `Started DispatchApplication`.
-- [ ] **9.** Verify health check: visit `https://your-backend.onrender.com/actuator/health`
+- [ ] **8.** In service **Settings → Networking** → click **Generate Domain** to get a public URL.
+- [ ] **9.** Click **Deploy** → watch logs for `Started DispatchApplication`.
+- [ ] **10.** Verify health check: visit `https://your-backend.up.railway.app/actuator/health`
   - Expected: `{"status":"UP"}`
-- [ ] **10.** Copy your backend URL (e.g. `https://event-transport-backend.onrender.com`).
+- [ ] **11.** Copy your backend URL (e.g. `https://event-transport-backend.up.railway.app`).
 
 ### Phase 3 — Frontend on Netlify
 
-- [ ] **11.** Go to [netlify.com](https://netlify.com) → **Add new site** → **Import from Git**.
-- [ ] **12.** Connect your GitHub repo → Netlify detects `netlify.toml`.
-- [ ] **13.** Add environment variable in **Site settings → Environment variables**:
+- [ ] **12.** Go to [netlify.com](https://netlify.com) → **Add new site** → **Import from Git**.
+- [ ] **13.** Connect your GitHub repo → Netlify detects `netlify.toml`.
+- [ ] **14.** Add environment variable in **Site settings → Environment variables**:
 
   | Variable | Value |
   |----------|-------|
-  | `VITE_API_URL` | `https://your-backend.onrender.com` (no trailing slash) |
+  | `VITE_API_URL` | `https://your-backend.up.railway.app` (no trailing slash) |
 
-- [ ] **14.** Deploy → wait for build to succeed.
-- [ ] **15.** Copy your Netlify URL (e.g. `https://event-transport.netlify.app`).
+- [ ] **15.** Deploy → wait for build to succeed.
+- [ ] **16.** Copy your Netlify URL (e.g. `https://event-transport.netlify.app`).
 
 ### Phase 4 — Wire CORS
 
-- [ ] **16.** Go back to **Render dashboard** → set `CORS_ALLOWED_ORIGINS` to your exact Netlify URL (no trailing slash).
-- [ ] **17.** Redeploy backend (or wait for next auto-deploy).
+- [ ] **17.** Go back to **Railway dashboard** → your service **Variables** → set `CORS_ALLOWED_ORIGINS` to your exact Netlify URL (no trailing slash).
+- [ ] **18.** Railway auto-redeploys on variable change.
 
 ### Phase 5 — Verify
 
-- [ ] **18.** Open Netlify URL in an **incognito window**.
-- [ ] **19.** Admin login → should redirect to `/admin`.
-- [ ] **20.** Push notification prompt should appear → grant permission.
-- [ ] **21.** Hard-refresh a non-root URL (e.g. `/admin`) → should load correctly (not 404).
-- [ ] **22.** Open DevTools → Network tab → verify API calls have no CORS errors.
-- [ ] **23.** Test guest OTP login and driver OTP login.
+- [ ] **19.** Open Netlify URL in an **incognito window**.
+- [ ] **20.** Admin login → should redirect to `/admin`.
+- [ ] **21.** Push notification prompt should appear → grant permission.
+- [ ] **22.** Hard-refresh a non-root URL (e.g. `/admin`) → should load correctly (not 404).
+- [ ] **23.** Open DevTools → Network tab → verify API calls have no CORS errors.
+- [ ] **24.** Test guest OTP login and driver OTP login.
 
 ### Phase 6 — QR Code & Distribution
 
-- [ ] **24.** Generate QR code:
+- [ ] **25.** Generate QR code:
   ```bash
   npx qrcode -o qr-app.png "https://your-site.netlify.app"
   ```
-- [ ] **25.** Print or share the QR code at event check-in, welcome kits, or WhatsApp groups.
-- [ ] **26.** Instruct users: *"Scan → Open in browser → Tap 'Add to Home Screen' for the best experience."*
+- [ ] **26.** Print or share the QR code at event check-in, welcome kits, or WhatsApp groups.
+- [ ] **27.** Instruct users: *"Scan → Open in browser → Tap 'Add to Home Screen' for the best experience."*
 
 ### Phase 7 — CI/CD (optional)
 
-- [ ] **27.** In GitHub repo → **Settings → Secrets and variables → Actions**, add:
+- [ ] **28.** In GitHub repo → **Settings → Secrets and variables → Actions**, add:
 
   | Secret | Where to get it |
   |--------|----------------|
-  | `DOCKERHUB_USERNAME` | Your Docker Hub account username |
-  | `DOCKERHUB_TOKEN` | Docker Hub → Account Settings → Security → New Access Token |
-  | `RENDER_DEPLOY_HOOK_URL` | Render → your service → Settings → Deploy Hook → copy URL |
+  | `RAILWAY_TOKEN` | Railway → Account Settings → Tokens → Create Token |
+  | `RAILWAY_SERVICE_ID` | Railway → your service → Settings → Service ID |
   | `NETLIFY_AUTH_TOKEN` | Netlify → User settings → Applications → New access token |
   | `NETLIFY_SITE_ID` | Netlify → Site settings → General → Site ID |
-  | `VITE_API_URL` | Same Render backend URL from step 10 |
+  | `VITE_API_URL` | Same Railway backend URL from step 11 |
 
-- [ ] **28.** Push to `main` → CI runs tests → deploys automatically on success.
+- [ ] **29.** Push to `main` → CI runs tests → deploys automatically on success.
 
 

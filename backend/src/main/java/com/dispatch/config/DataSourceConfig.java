@@ -10,7 +10,7 @@ import javax.sql.DataSource;
 import java.net.URI;
 
 /**
- * Rewrites Render's {@code postgres://user:pass@host/db} into
+ * Rewrites Railway/Render's {@code postgres://user:pass@host/db} into
  * {@code jdbc:postgresql://host/db} so Spring JDBC can connect.
  */
 @Configuration

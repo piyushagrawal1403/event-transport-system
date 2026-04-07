@@ -30,7 +30,70 @@ public class CabController {
         return ResponseEntity.ok(cabRepository.findAll());
     }
 
+    @PostMapping
+    public ResponseEntity<Cab> createCab(@RequestBody Map<String, Object> body) {
+        String licensePlate = (String) body.get("licensePlate");
+        String driverName = (String) body.get("driverName");
+        String driverPhone = (String) body.get("driverPhone");
+        Integer capacity = body.get("capacity") != null ? ((Number) body.get("capacity")).intValue() : 4;
+
+        if (licensePlate == null || licensePlate.isBlank()) throw new IllegalArgumentException("licensePlate is required");
+        if (driverName == null || driverName.isBlank()) throw new IllegalArgumentException("driverName is required");
+        if (driverPhone == null || driverPhone.isBlank()) throw new IllegalArgumentException("driverPhone is required");
+        if (capacity < 1) throw new IllegalArgumentException("capacity must be at least 1");
+
+        if (cabRepository.findByDriverPhone(driverPhone.trim()).isPresent()) {
+            throw new IllegalArgumentException("A cab with this driver phone already exists");
+        }
+
+        Cab cab = new Cab(licensePlate.trim(), driverName.trim(), driverPhone.trim(), capacity);
+        return ResponseEntity.ok(cabRepository.save(cab));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Cab> updateCab(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Cab cab = cabRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + id));
+
+        if (body.containsKey("licensePlate")) {
+            String lp = (String) body.get("licensePlate");
+            if (lp == null || lp.isBlank()) throw new IllegalArgumentException("licensePlate cannot be blank");
+            cab.setLicensePlate(lp.trim());
+        }
+        if (body.containsKey("driverName")) {
+            String dn = (String) body.get("driverName");
+            if (dn == null || dn.isBlank()) throw new IllegalArgumentException("driverName cannot be blank");
+            cab.setDriverName(dn.trim());
+        }
+        if (body.containsKey("driverPhone")) {
+            String dp = (String) body.get("driverPhone");
+            if (dp == null || dp.isBlank()) throw new IllegalArgumentException("driverPhone cannot be blank");
+            cab.setDriverPhone(dp.trim());
+        }
+        if (body.containsKey("capacity")) {
+            int cap = ((Number) body.get("capacity")).intValue();
+            if (cap < 1) throw new IllegalArgumentException("capacity must be at least 1");
+            cab.setCapacity(cap);
+        }
+
+        return ResponseEntity.ok(cabRepository.save(cab));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, String>> deleteCab(@PathVariable Long id) {
+        Cab cab = cabRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + id));
+        if (cab.getStatus() == CabStatus.BUSY) {
+            throw new IllegalStateException("Cannot delete a cab that is currently BUSY on a trip");
+        }
+        cabRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("message", "Cab deleted"));
+    }
+
+    // ...existing endpoints below...
+
     @GetMapping("/{cabId}/analytics")
+    // ...existing code...
     public ResponseEntity<DriverAnalyticsDto> getDriverAnalytics(@PathVariable Long cabId) {
         Cab cab = cabRepository.findById(cabId)
                 .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cabId));

@@ -14,6 +14,8 @@ export {
   getLocations, cancelRide, acceptRide, denyRide,
   assignRides, startTrip, completeTrip, updateTripStatus, markArrived,
   updateCabStatus, getCabAnalytics,
+  createCab, updateCab, deleteCab,
+  createLocation, updateLocation, deleteLocation,
 } from './rides';
 
 // Events & Notifications

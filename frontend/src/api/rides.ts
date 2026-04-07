@@ -86,3 +86,23 @@ export const updateCabStatus = (phone: string, status: 'AVAILABLE' | 'OFFLINE') 
 export const getCabAnalytics = (cabId: number) =>
     api.get<DriverAnalytics>(`/api/v1/cabs/${cabId}/analytics`);
 
+export const createCab = (payload: { licensePlate: string; driverName: string; driverPhone: string; capacity: number }) =>
+    api.post<Cab>('/api/v1/cabs', payload);
+
+export const updateCab = (id: number, payload: { licensePlate?: string; driverName?: string; driverPhone?: string; capacity?: number }) =>
+    api.put<Cab>(`/api/v1/cabs/${id}`, payload);
+
+export const deleteCab = (id: number) =>
+    api.delete<{ message: string }>(`/api/v1/cabs/${id}`);
+
+// === Location Endpoints ===
+
+export const createLocation = (payload: { name: string; isMainVenue?: boolean; distanceFromMainVenue?: number }) =>
+    api.post<Location>('/api/v1/locations', payload);
+
+export const updateLocation = (id: number, payload: { name?: string; isMainVenue?: boolean; distanceFromMainVenue?: number }) =>
+    api.put<Location>(`/api/v1/locations/${id}`, payload);
+
+export const deleteLocation = (id: number) =>
+    api.delete<{ message: string }>(`/api/v1/locations/${id}`);
+

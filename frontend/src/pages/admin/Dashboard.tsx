@@ -22,6 +22,8 @@ import CancelledQueuePanel from './components/CancelledQueuePanel';
 import RideQueuePanel from './components/RideQueuePanel';
 import FleetPanel from './components/FleetPanel';
 import ComplaintsPanel from './components/ComplaintsPanel';
+import CabsManagementPanel from './components/CabsManagementPanel';
+import LocationsManagementPanel from './components/LocationsManagementPanel';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -360,6 +362,9 @@ export default function Dashboard() {
           </div>
 
           <FleetPanel cabs={cabs} handleExportDriverAnalytics={handleExportDriverAnalytics} onOpenAnalytics={setAnalyticsModal} />
+
+          <CabsManagementPanel cabs={cabs} refresh={fetchData} />
+          <LocationsManagementPanel locations={locations} refresh={fetchEvents} />
 
           <ComplaintsPanel
             complaints={complaints} showComplaints={showComplaints} setShowComplaints={setShowComplaints}

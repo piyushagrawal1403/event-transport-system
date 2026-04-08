@@ -1,10 +1,9 @@
 package com.dispatch.service;
 
 import com.dispatch.dto.AdminLoginDto;
-import com.dispatch.dto.RequestOtpDto;
-import com.dispatch.dto.RequestOtpResponseDto;
-import com.dispatch.dto.VerifyOtpDto;
 import com.dispatch.dto.AuthResponseDto;
+import com.dispatch.dto.DriverLoginDto;
+import com.dispatch.dto.GuestLoginDto;
 import com.dispatch.model.Cab;
 import com.dispatch.model.User;
 import com.dispatch.model.UserRole;
@@ -16,7 +15,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -28,7 +26,7 @@ class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private CabRepository cabRepository;
-    @Mock private OtpStore otpStore;
+    @Mock private RecaptchaService recaptchaService;
     @Mock private JwtService jwtService;
 
     private AuthService authService;
@@ -36,7 +34,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         authService = new AuthService(
-                userRepository, cabRepository, otpStore, jwtService,
+                userRepository, cabRepository, recaptchaService, jwtService,
                 "admin", "admin123", "9900000000", "Event Admin"
         );
     }
@@ -51,25 +49,27 @@ class AuthServiceTest {
     }
 
     @Test
-    void requestOtp_guest_createsOrUpdatesUserAndReturnsOtp() {
+    void guestLogin_createsOrUpdatesUserAndReturnsJwt() {
+        when(recaptchaService.verifyToken("recaptcha-token")).thenReturn(true);
         when(userRepository.findByPhone("9999999999")).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
             u.setId(1L);
             return u;
         });
-        when(otpStore.createChallenge(anyString()))
-                .thenReturn(new OtpStore.OtpChallenge("123456", Instant.now().plusSeconds(300)));
+        when(userRepository.findByPhone("9999999999")).thenReturn(Optional.of(savedUser("Alice", "9999999999", UserRole.GUEST)));
+        when(jwtService.generateToken(any(User.class))).thenReturn("jwt-token");
 
-        RequestOtpResponseDto result = authService.requestOtp(new RequestOtpDto("Alice", "9999999999", UserRole.GUEST));
+        AuthResponseDto result = authService.guestLogin(new GuestLoginDto("Alice", "9999999999", "recaptcha-token"));
 
         assertNotNull(result);
-        assertEquals("123456", result.otp());
+        assertEquals("jwt-token", result.token());
         verify(userRepository).save(any(User.class));
     }
 
     @Test
-    void requestOtp_driver_usesExistingCabRecord() {
+    void driverLogin_usesExistingCabRecordAndReturnsJwt() {
+        when(recaptchaService.verifyToken("recaptcha-token")).thenReturn(true);
         Cab cab = new Cab("KA01AB1234", "DriverOne", "8888888888", 4);
         when(cabRepository.findByDriverPhone("8888888888")).thenReturn(Optional.of(cab));
         when(userRepository.findByPhone("8888888888")).thenReturn(Optional.empty());
@@ -78,55 +78,46 @@ class AuthServiceTest {
             u.setId(2L);
             return u;
         });
-        when(otpStore.createChallenge(anyString()))
-                .thenReturn(new OtpStore.OtpChallenge("654321", Instant.now().plusSeconds(300)));
+        when(userRepository.findByPhone("8888888888")).thenReturn(Optional.of(savedUser("DriverOne", "8888888888", UserRole.DRIVER)));
+        when(jwtService.generateToken(any(User.class))).thenReturn("driver-jwt");
 
-        RequestOtpResponseDto result = authService.requestOtp(new RequestOtpDto(null, "8888888888", UserRole.DRIVER));
+        AuthResponseDto result = authService.driverLogin(new DriverLoginDto("8888888888", "recaptcha-token"));
 
         assertNotNull(result);
-        assertEquals("654321", result.otp());
+        assertEquals("driver-jwt", result.token());
         verify(cabRepository).findByDriverPhone("8888888888");
     }
 
     @Test
-    void requestOtp_driver_throwsWhenPhoneNotRegistered() {
+    void driverLogin_throwsWhenPhoneNotRegistered() {
+        when(recaptchaService.verifyToken("recaptcha-token")).thenReturn(true);
         when(cabRepository.findByDriverPhone("7777777777")).thenReturn(Optional.empty());
 
         assertThrows(IllegalArgumentException.class,
-                () -> authService.requestOtp(new RequestOtpDto(null, "7777777777", UserRole.DRIVER)));
+                () -> authService.driverLogin(new DriverLoginDto("7777777777", "recaptcha-token")));
     }
 
     @Test
-    void requestOtp_adminRole_throwsImmediately() {
+    void guestLogin_throwsWhenNameBlank() {
+        when(recaptchaService.verifyToken("recaptcha-token")).thenReturn(true);
         assertThrows(IllegalArgumentException.class,
-                () -> authService.requestOtp(new RequestOtpDto("Admin", "9900000000", UserRole.ADMIN)));
+                () -> authService.guestLogin(new GuestLoginDto("", "9999999999", "recaptcha-token")));
     }
 
     @Test
-    void requestOtp_guest_throwsWhenNameBlank() {
-        assertThrows(IllegalArgumentException.class,
-                () -> authService.requestOtp(new RequestOtpDto("", "9999999999", UserRole.GUEST)));
-    }
-
-    @Test
-    void verifyOtp_successReturnsToken() {
-        User user = savedUser("Alice", "9999999999", UserRole.GUEST);
-        when(otpStore.verify("GUEST:9999999999", "123456")).thenReturn(true);
-        when(userRepository.findByPhone("9999999999")).thenReturn(Optional.of(user));
-        when(jwtService.generateToken(any(User.class))).thenReturn("jwt-token");
-
-        AuthResponseDto result = authService.verifyOtp(new VerifyOtpDto("9999999999", "123456", UserRole.GUEST));
-
-        assertNotNull(result);
-        assertEquals("jwt-token", result.token());
-    }
-
-    @Test
-    void verifyOtp_invalidOtpThrows() {
-        when(otpStore.verify("GUEST:9999999999", "000000")).thenReturn(false);
+    void guestLogin_rejectsWhenRecaptchaFails() {
+        when(recaptchaService.verifyToken("bad-token")).thenReturn(false);
 
         assertThrows(IllegalArgumentException.class,
-                () -> authService.verifyOtp(new VerifyOtpDto("9999999999", "000000", UserRole.GUEST)));
+                () -> authService.guestLogin(new GuestLoginDto("Alice", "9999999999", "bad-token")));
+    }
+
+    @Test
+    void driverLogin_rejectsWhenRecaptchaFails() {
+        when(recaptchaService.verifyToken("bad-token")).thenReturn(false);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> authService.driverLogin(new DriverLoginDto("9999999999", "bad-token")));
     }
 
     @Test

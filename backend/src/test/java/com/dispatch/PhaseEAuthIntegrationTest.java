@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -48,32 +51,18 @@ class PhaseEAuthIntegrationTest {
     @Autowired
     private LocationRepository locationRepository;
 
+    @MockBean
+    private com.dispatch.service.RecaptchaService recaptchaService;
+
     @Test
-    void requestOtpAndVerifyOtp_forDriver_returnsJwtBackedSession() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/request-otp")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "phone", "9876510001",
-                                "role", "DRIVER"
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.otp").isString())
-                .andExpect(jsonPath("$.expiresAt").exists());
+    void driverLogin_withRecaptcha_returnsJwtBackedSession() throws Exception {
+        when(recaptchaService.verifyToken(anyString())).thenReturn(true);
 
-        String otp = objectMapper.readTree(mockMvc.perform(post("/api/v1/auth/request-otp")
+        mockMvc.perform(post("/api/v1/auth/driver-login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "phone", "9876510001",
-                                "role", "DRIVER"
-                        ))))
-                .andReturn().getResponse().getContentAsString()).get("otp").asText();
-
-        mockMvc.perform(post("/api/v1/auth/verify-otp")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "phone", "9876510001",
-                                "otp", otp,
-                                "role", "DRIVER"
+                                "recaptchaToken", "integration-test-token"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isString())

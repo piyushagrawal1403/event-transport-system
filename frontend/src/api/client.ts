@@ -5,7 +5,7 @@ export { isUnauthorizedError } from './http';
 export type { AuthSession } from '../lib/auth';
 
 // Auth
-export { requestOtp, verifyOtp, adminLogin } from './auth';
+export { guestLogin, driverLogin, adminLogin } from './auth';
 
 // Rides, dispatch, cabs, locations
 export {
@@ -35,7 +35,7 @@ export { getConfig, updateConfig } from './config';
 
 // All shared types
 export type {
-  RequestOtpPayload, RequestOtpResponse, VerifyOtpPayload, AdminLoginPayload,
+  GuestLoginPayload, DriverLoginPayload, AdminLoginPayload,
   RideRequest, RideRequestPayload, RideStatus,
   Cab, Location, AssignPayload, RideIncidentType, CancelledQueueEntry,
   DriverAnalytics, TopDriver, AdminDailyReport,

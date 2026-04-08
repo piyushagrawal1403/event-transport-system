@@ -2,22 +2,15 @@ import { type UserRole } from '../lib/auth';
 
 // === Auth Types ===
 
-export interface RequestOtpPayload {
-  name?: string;
+export interface GuestLoginPayload {
+  name: string;
   phone: string;
-  role: Exclude<UserRole, 'ADMIN'>;
+  recaptchaToken: string;
 }
 
-export interface RequestOtpResponse {
-  message: string;
-  otp: string;
-  expiresAt: string;
-}
-
-export interface VerifyOtpPayload {
+export interface DriverLoginPayload {
   phone: string;
-  otp: string;
-  role: Exclude<UserRole, 'ADMIN'>;
+  recaptchaToken: string;
 }
 
 export interface AdminLoginPayload {

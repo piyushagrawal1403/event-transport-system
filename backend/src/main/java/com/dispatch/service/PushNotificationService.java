@@ -115,6 +115,7 @@ public class PushNotificationService {
         }
     }
 
+    @Transactional
     public void unsubscribeUser(String endpoint) {
         try {
             pushSubscriptionRepository.deleteByEndpoint(endpoint);
@@ -124,6 +125,7 @@ public class PushNotificationService {
         }
     }
 
+    @Transactional
     public void unsubscribeUser(String endpoint, String userPhone, String userType) {
         String normalizedUserType = normalizeUserType(userType);
         String normalizedUserPhone = normalizeUserPhone(userPhone, userType);
@@ -181,7 +183,8 @@ public class PushNotificationService {
         sendPushToSubscriptions(subscriptions, title, body, "guest " + normalizedPhone);
     }
 
-    private void sendPushToSubscriptions(List<PushSubscription> subscriptions, String title, String body, String audience) {
+    @Transactional
+    public void sendPushToSubscriptions(List<PushSubscription> subscriptions, String title, String body, String audience) {
         if (subscriptions == null || subscriptions.isEmpty()) {
             logger.info("No push subscriptions found for {}", audience);
             return;

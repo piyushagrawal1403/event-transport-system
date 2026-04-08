@@ -2,9 +2,8 @@ package com.dispatch.controller;
 
 import com.dispatch.dto.AdminLoginDto;
 import com.dispatch.dto.AuthResponseDto;
-import com.dispatch.dto.RequestOtpDto;
-import com.dispatch.dto.RequestOtpResponseDto;
-import com.dispatch.dto.VerifyOtpDto;
+import com.dispatch.dto.DriverLoginDto;
+import com.dispatch.dto.GuestLoginDto;
 import com.dispatch.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -23,14 +22,14 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/request-otp")
-    public ResponseEntity<RequestOtpResponseDto> requestOtp(@Valid @RequestBody RequestOtpDto dto) {
-        return ResponseEntity.ok(authService.requestOtp(dto));
+    @PostMapping("/guest-login")
+    public ResponseEntity<AuthResponseDto> guestLogin(@Valid @RequestBody GuestLoginDto dto) {
+        return ResponseEntity.ok(authService.guestLogin(dto));
     }
 
-    @PostMapping("/verify-otp")
-    public ResponseEntity<AuthResponseDto> verifyOtp(@Valid @RequestBody VerifyOtpDto dto) {
-        return ResponseEntity.ok(authService.verifyOtp(dto));
+    @PostMapping("/driver-login")
+    public ResponseEntity<AuthResponseDto> driverLogin(@Valid @RequestBody DriverLoginDto dto) {
+        return ResponseEntity.ok(authService.driverLogin(dto));
     }
 
     @PostMapping("/admin-login")

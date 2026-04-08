@@ -8,14 +8,15 @@ A production-style transport dispatch platform for coordinating event cab operat
 - Database: H2 (dev), PostgreSQL (prod)
 - Frontend: React 18, TypeScript, Vite, Tailwind CSS
 - PWA: Service worker + Web Push (VAPID)
+- Authentication: reCAPTCHA v3 (invisible bot protection)
 
 ## Core Capabilities
 
 - Guest ride booking with passenger split logic (for > cab capacity)
-- Unified guest/driver OTP login plus admin credential login
+- Unified guest/driver reCAPTCHA v3 login plus admin credential login
 - Admin dispatch queue with batch assignment and capacity checks
 - Driver consent flow (accept / deny) before trip start
-- OTP validation at trip start (not drop-off)
+- OTP validation at trip start (for ride confirmation, not login)
 - Live trip progression: OFFERED -> ACCEPTED -> ARRIVED -> IN_TRANSIT -> COMPLETED
 - Guest/admin cancellation handling with notifications
 - Driver analytics (total km, completed/denied trips, avg acceptance time)
@@ -33,7 +34,7 @@ A production-style transport dispatch platform for coordinating event cab operat
 
 ### Guest
 
-- Login with name + phone + OTP
+- Login with name + phone + reCAPTCHA v3 (invisible bot protection)
 - View event timeline
 - Open event details page (`/events/:eventId`)
 - Book ride (to venue / to hotel)
@@ -63,7 +64,7 @@ A production-style transport dispatch platform for coordinating event cab operat
 
 ### Driver
 
-- Login with registered phone + OTP
+- Login with registered phone + reCAPTCHA v3 (invisible bot protection)
 - View assigned/active rides
 - Accept or deny assigned batch
 - Mark arrived
@@ -103,7 +104,7 @@ Notes:
 
 | Route | Description |
 |---|---|
-| `/` | Unified guest / driver OTP login and admin login |
+| `/` | Unified guest / driver reCAPTCHA login and admin login |
 | `/home` | Guest home (timeline + booking + active rides) |
 | `/request` | Guest request ride page |
 | `/status` | Guest ride status page |
@@ -111,13 +112,148 @@ Notes:
 | `/admin` | Admin dashboard |
 | `/driver` | Driver dashboard |
 
-### Authentication
+## Authentication
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `POST` | `/api/v1/auth/request-otp` | Generate a 5-minute OTP for guest/driver login |
-| `POST` | `/api/v1/auth/verify-otp` | Verify OTP and issue JWT |
-| `POST` | `/api/v1/auth/admin-login` | Admin login via environment-backed credentials |
+### reCAPTCHA v3 (Guest & Driver Login)
+
+Guest and driver login uses **reCAPTCHA v3**, an invisible bot protection system with no user interaction required.
+
+**Endpoints:**
+
+| Method | Endpoint | Purpose | Payload |
+|---|---|---|---|
+| `POST` | `/api/v1/auth/guest-login` | Guest login via reCAPTCHA | `{ name, phone, recaptchaToken }` |
+| `POST` | `/api/v1/auth/driver-login` | Driver login via reCAPTCHA | `{ phone, recaptchaToken }` |
+| `POST` | `/api/v1/auth/admin-login` | Admin login via credentials | `{ username, password }` |
+
+**Response (all login types):**
+```json
+{
+  "token": "eyJhbGc...",
+  "user": {
+    "id": 1,
+    "name": "Aman",
+    "phone": "9999999999",
+    "role": "GUEST"
+  }
+}
+```
+
+**Features:**
+- ✅ Invisible (no CAPTCHA UI)
+- ✅ Free (Google's reCAPTCHA v3)
+- ✅ Bot protection included
+- ✅ Instant verification (no SMS delays)
+
+### reCAPTCHA v3 Setup
+
+**1. Get Keys from Google**
+```
+Go to: https://www.google.com/recaptcha/admin
+Create new site → reCAPTCHA v3
+Copy: Site Key + Secret Key
+```
+
+**2. Backend Configuration**
+Add to `.env`:
+```bash
+RECAPTCHA_SECRET_KEY=your_secret_key_here
+RECAPTCHA_THRESHOLD=0.5
+```
+
+**3. Frontend Configuration**
+Add to `frontend/index.html` in `<head>`:
+```html
+<script src="https://www.google.com/recaptcha/api.js"></script>
+```
+
+Add to `frontend/.env`:
+```
+VITE_RECAPTCHA_SITE_KEY=your_site_key_here
+```
+
+**4. Frontend Login Example (React/TypeScript)**
+```typescript
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { apiClient } from '@/services/api'
+
+export function GuestLoginPage() {
+  const navigate = useNavigate()
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    try {
+      // Get reCAPTCHA token silently
+      const recaptchaToken = await (window as any).grecaptcha.execute(
+        import.meta.env.VITE_RECAPTCHA_SITE_KEY,
+        { action: 'guest_login' }
+      )
+
+      // Call backend login endpoint
+      const response = await apiClient.post('/auth/guest-login', {
+        name,
+        phone,
+        recaptchaToken
+      })
+
+      // Store token and redirect
+      localStorage.setItem('authToken', response.data.token)
+      navigate('/home')
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Login failed. Try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="login-form">
+      <h2>Guest Login</h2>
+      <form onSubmit={handleLogin}>
+        <input
+          type="text"
+          placeholder="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <input
+          type="tel"
+          placeholder="Phone (10 digits)"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          maxLength={10}
+          required
+        />
+        {error && <p className="error">{error}</p>}
+        <button type="submit" disabled={loading}>
+          {loading ? 'Logging in...' : 'Login'}
+        </button>
+      </form>
+    </div>
+  )
+}
+```
+
+**Driver Login (similar, no name field):**
+```typescript
+// POST /api/v1/auth/driver-login
+// { phone, recaptchaToken }
+```
+
+**Admin Login (unchanged):**
+```typescript
+// POST /api/v1/auth/admin-login
+// { username, password }
+```
 
 ## API Reference
 
@@ -332,6 +468,8 @@ export CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 export VAPID_PUBLIC_KEY=<your_public_key>
 export VAPID_PRIVATE_KEY=<your_private_key>
 export VAPID_SUBJECT=mailto:support@event-transport.com
+export RECAPTCHA_SECRET_KEY=<your_recaptcha_secret_key>
+export RECAPTCHA_THRESHOLD=0.5
 ```
 
 ### Generate VAPID Keys
@@ -339,6 +477,21 @@ export VAPID_SUBJECT=mailto:support@event-transport.com
 ```bash
 npm install -g web-push
 web-push generate-vapid-keys
+```
+
+### Generate reCAPTCHA Keys
+
+```
+1. Go to: https://www.google.com/recaptcha/admin
+2. Click "Create or manage console"
+3. Click "+" to create new site
+4. Fill in:
+   - Label: "Event Transport System"
+   - reCAPTCHA version: reCAPTCHA v3
+   - Domains: your-domain.com
+5. Accept terms and submit
+6. Copy Site Key + Secret Key
+7. Add to environment variables as above
 ```
 
 ## Event Image Upload Notes
@@ -373,7 +526,7 @@ npm run build
 
 Manual checks:
 
-- Open `/` and verify guest OTP login, driver OTP login, and admin login all route to `/home`, `/driver`, or `/admin`.
+- Open `/` and verify guest reCAPTCHA login, driver reCAPTCHA login, and admin login all route to `/home`, `/driver`, or `/admin`.
 - Open `/admin` and verify Cancelled Queue + Complaints filters and CSV export buttons.
 - Verify unauthorized fallback appears if the JWT is missing/expired/invalid.
 - Upload invalid event image type/size and confirm validation error.
@@ -407,6 +560,8 @@ When the backend runs with `SPRING_PROFILES_ACTIVE=seed`, it seeds:
 | `VAPID_PUBLIC_KEY` | ✅ | — | See VAPID generation below |
 | `VAPID_PRIVATE_KEY` | ✅ | — | See VAPID generation below |
 | `VAPID_SUBJECT` | ⬜ | `mailto:support@event-transport.com` | Contact URI for push provider |
+| `RECAPTCHA_SECRET_KEY` | ✅ | — | Secret key from Google reCAPTCHA v3 console |
+| `RECAPTCHA_THRESHOLD` | ⬜ | `0.5` | Bot score threshold (0-1, higher = stricter) |
 | `CORS_ALLOWED_ORIGINS` | ✅ | — | Exact Netlify URL, no trailing slash |
 | `JWT_EXPIRATION_MS` | ⬜ | `86400000` | Token TTL in ms (24 h) |
 | `PORT` | ⬜ | `8080` | Injected automatically by Railway |
@@ -436,6 +591,8 @@ docker run -p 8080:8080 \
   -e VAPID_PUBLIC_KEY=... \
   -e VAPID_PRIVATE_KEY=... \
   -e VAPID_SUBJECT=mailto:support@event-transport.com \
+  -e RECAPTCHA_SECRET_KEY=your_recaptcha_secret_key \
+  -e RECAPTCHA_THRESHOLD=0.5 \
   event-transport
 ```
 
@@ -456,11 +613,13 @@ docker run -p 8080:8080 \
 1. Connect GitHub repo
 2. Confirm `netlify.toml` is detected (base dir = `frontend`)
 3. Set `VITE_API_URL` to your Railway backend URL (Environment Variables in Netlify dashboard)
-4. Deploy — confirm SPA routing works on hard refresh
+4. Set `VITE_RECAPTCHA_SITE_KEY` to your reCAPTCHA site key (Environment Variables in Netlify dashboard)
+5. Deploy — confirm SPA routing works on hard refresh
 
 ```bash
 cd frontend
 echo "VITE_API_URL=https://your-backend-url" > .env.production
+echo "VITE_RECAPTCHA_SITE_KEY=your_recaptcha_site_key" >> .env.production
 npm run build
 ```
 

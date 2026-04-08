@@ -3,9 +3,8 @@ package com.dispatch.service;
 import com.dispatch.dto.AdminLoginDto;
 import com.dispatch.dto.AuthResponseDto;
 import com.dispatch.dto.AuthUserDto;
-import com.dispatch.dto.RequestOtpDto;
-import com.dispatch.dto.RequestOtpResponseDto;
-import com.dispatch.dto.VerifyOtpDto;
+import com.dispatch.dto.DriverLoginDto;
+import com.dispatch.dto.GuestLoginDto;
 import com.dispatch.model.Cab;
 import com.dispatch.model.User;
 import com.dispatch.model.UserRole;
@@ -27,7 +26,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final CabRepository cabRepository;
-    private final OtpStore otpStore;
+    private final RecaptchaService recaptchaService;
     private final JwtService jwtService;
     private final String adminUsername;
     private final String adminPassword;
@@ -36,7 +35,7 @@ public class AuthService {
 
     public AuthService(UserRepository userRepository,
                        CabRepository cabRepository,
-                       OtpStore otpStore,
+                       RecaptchaService recaptchaService,
                        JwtService jwtService,
                        @Value("${app.auth.admin.username:admin}") String adminUsername,
                        @Value("${app.auth.admin.password:admin123}") String adminPassword,
@@ -44,7 +43,7 @@ public class AuthService {
                        @Value("${app.auth.admin.name:Event Admin}") String adminName) {
         this.userRepository = userRepository;
         this.cabRepository = cabRepository;
-        this.otpStore = otpStore;
+        this.recaptchaService = recaptchaService;
         this.jwtService = jwtService;
         this.adminUsername = adminUsername;
         this.adminPassword = adminPassword;
@@ -53,42 +52,35 @@ public class AuthService {
     }
 
     @Transactional
-    public RequestOtpResponseDto requestOtp(RequestOtpDto dto) {
-        UserRole role = dto.role();
-        if (role == UserRole.ADMIN) {
-            throw new IllegalArgumentException("Use admin login for admin access");
+    public AuthResponseDto guestLogin(GuestLoginDto dto) {
+        if (!recaptchaService.verifyToken(dto.recaptchaToken())) {
+            throw new IllegalArgumentException("reCAPTCHA verification failed. Please try again.");
         }
 
         String sanitizedPhone = sanitizePhone(dto.phone());
-        if (role == UserRole.GUEST) {
-            if (dto.name() == null || dto.name().isBlank()) {
-                throw new IllegalArgumentException("Name is required for guest login");
-            }
-            upsertUser(dto.name().trim(), sanitizedPhone, UserRole.GUEST);
-        } else {
-            Cab cab = cabRepository.findByDriverPhone(sanitizedPhone)
-                    .orElseThrow(() -> new IllegalArgumentException("No driver found for this phone number"));
-            upsertUser(cab.getDriverName(), sanitizedPhone, UserRole.DRIVER);
-        }
+        upsertUser(dto.name().trim(), sanitizedPhone, UserRole.GUEST);
+        User user = userRepository.findByPhone(sanitizedPhone)
+                .orElseThrow(() -> new IllegalArgumentException("Failed to create guest user"));
 
-        OtpStore.OtpChallenge challenge = otpStore.createChallenge(buildOtpKey(role, sanitizedPhone));
-        logger.info("OTP generated for {} ({}) — expires at {}", role, sanitizedPhone, challenge.expiresAt());
-        return new RequestOtpResponseDto("OTP sent successfully", challenge.otp(), challenge.expiresAt());
+        logger.info("Guest login successful for phone: {}", sanitizedPhone);
+        return buildAuthResponse(user);
     }
 
     @Transactional
-    public AuthResponseDto verifyOtp(VerifyOtpDto dto) {
-        UserRole role = dto.role();
-        if (role == UserRole.ADMIN) {
-            throw new IllegalArgumentException("Use admin login for admin access");
+    public AuthResponseDto driverLogin(DriverLoginDto dto) {
+        if (!recaptchaService.verifyToken(dto.recaptchaToken())) {
+            throw new IllegalArgumentException("reCAPTCHA verification failed. Please try again.");
         }
 
         String sanitizedPhone = sanitizePhone(dto.phone());
-        if (!otpStore.verify(buildOtpKey(role, sanitizedPhone), dto.otp())) {
-            throw new IllegalArgumentException("Invalid or expired OTP");
-        }
+        Cab cab = cabRepository.findByDriverPhone(sanitizedPhone)
+                .orElseThrow(() -> new IllegalArgumentException("No driver found for this phone number"));
 
-        User user = resolveUserForRole(role, sanitizedPhone);
+        upsertUser(cab.getDriverName(), sanitizedPhone, UserRole.DRIVER);
+        User user = userRepository.findByPhone(sanitizedPhone)
+                .orElseThrow(() -> new IllegalArgumentException("Failed to create driver user"));
+
+        logger.info("Driver login successful for phone: {}", sanitizedPhone);
         return buildAuthResponse(user);
     }
 
@@ -117,7 +109,7 @@ public class AuthService {
 
         return userRepository.findByPhone(phone)
                 .filter(user -> user.getRole() == UserRole.GUEST)
-                .orElseThrow(() -> new IllegalArgumentException("Please request a new OTP"));
+                .orElseThrow(() -> new IllegalArgumentException("Please login again"));
     }
 
     private AuthResponseDto buildAuthResponse(User user) {
@@ -138,9 +130,6 @@ public class AuthService {
         return userRepository.save(user);
     }
 
-    private String buildOtpKey(UserRole role, String phone) {
-        return role.name() + ":" + phone;
-    }
 
     private String sanitizePhone(String phone) {
         if (phone == null) {

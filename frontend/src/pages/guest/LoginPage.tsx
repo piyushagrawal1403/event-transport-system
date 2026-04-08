@@ -1,14 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Car, User, Phone, KeyRound, ShieldCheck, LoaderCircle } from 'lucide-react';
-import { adminLogin, requestOtp, verifyOtp } from '../../api/client';
+import { adminLogin, guestLogin, driverLogin } from '../../api/client';
 import { getAuthSession, getHomeRouteForRole, saveAuthSession, type UserRole } from '../../lib/auth';
 
 type ApiError = { response?: { data?: { error?: string; details?: Record<string, string> | string[] } } };
+type Grecaptcha = {
+  ready: (cb: () => void) => void;
+  execute: (siteKey: string, options: { action: string }) => Promise<string>;
+};
 
 const RECENT_GUEST_KEY = 'recentLogin.guest';
 const RECENT_DRIVER_KEY = 'recentLogin.driver';
 const RECENT_ADMIN_KEY = 'recentLogin.admin';
+const AUTH_DEBUG = import.meta.env.DEV || import.meta.env.VITE_AUTH_DEBUG === 'true';
+
+function debugAuth(...args: unknown[]) {
+  if (AUTH_DEBUG) {
+    // Keep logs scoped so login troubleshooting is easy in browser console.
+    console.debug('[auth-debug]', ...args);
+  }
+}
 
 function extractApiError(err: unknown, fallback: string): string {
   const data = (err as ApiError)?.response?.data;
@@ -28,14 +40,34 @@ export default function LoginPage() {
   const [role, setRole] = useState<UserRole>('GUEST');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [demoOtp, setDemoOtp] = useState('');
-  const [otpRequested, setOtpRequested] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
+    if (!siteKey) {
+      debugAuth('Missing VITE_RECAPTCHA_SITE_KEY');
+      return;
+    }
+
+    const existing = document.querySelector<HTMLScriptElement>('script[data-recaptcha="v3"]');
+    if (existing) {
+      debugAuth('reCAPTCHA script already present');
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
+    script.async = true;
+    script.defer = true;
+    script.dataset.recaptcha = 'v3';
+    script.onload = () => debugAuth('reCAPTCHA script loaded');
+    script.onerror = () => debugAuth('Failed to load reCAPTCHA script');
+    document.head.appendChild(script);
+  }, []);
 
   useEffect(() => {
     const session = getAuthSession();
@@ -45,9 +77,6 @@ export default function LoginPage() {
   }, [navigate]);
 
   useEffect(() => {
-    setOtpRequested(false);
-    setOtp('');
-    setDemoOtp('');
     setError('');
 
     if (typeof window === 'undefined') {
@@ -106,47 +135,61 @@ export default function LoginPage() {
     return digits.startsWith('91') && digits.length === 12 ? digits.substring(2) : digits.slice(-10);
   };
 
-  const handleRequestOtp = async (e: React.FormEvent) => {
+  const getRecaptchaToken = async (action: 'guest_login' | 'driver_login') => {
+    const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
+    if (!siteKey) {
+      throw new Error('Missing VITE_RECAPTCHA_SITE_KEY in frontend environment');
+    }
+
+    const grecaptcha = (window as Window & { grecaptcha?: Grecaptcha }).grecaptcha;
+    if (!grecaptcha) {
+      debugAuth('grecaptcha unavailable on window', { action });
+      throw new Error('reCAPTCHA is not loaded. Refresh and try again.');
+    }
+
+    debugAuth('Requesting reCAPTCHA token', { action });
+    return await new Promise<string>((resolve, reject) => {
+      grecaptcha.ready(() => {
+        grecaptcha.execute(siteKey, { action })
+          .then((token) => {
+            debugAuth('reCAPTCHA token received', { action, tokenLength: token?.length ?? 0 });
+            resolve(token);
+          })
+          .catch((err) => {
+            debugAuth('reCAPTCHA execution failed', err);
+            reject(err);
+          });
+      });
+    });
+  };
+
+  const handleUserLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError('');
 
     try {
       const sanitizedPhone = sanitizePhone(phone);
+      debugAuth('Submitting login', { role, phone: sanitizedPhone });
+
+      const recaptchaToken = await getRecaptchaToken(role === 'GUEST' ? 'guest_login' : 'driver_login');
+
       const response = role === 'GUEST'
-        ? await requestOtp({ name: name.trim(), phone: sanitizedPhone, role: 'GUEST' })
-        : await requestOtp({ phone: sanitizedPhone, role: 'DRIVER' });
+        ? await guestLogin({ name: name.trim(), phone: sanitizedPhone, recaptchaToken })
+        : await driverLogin({ phone: sanitizedPhone, recaptchaToken });
+
       setPhone(sanitizedPhone);
-      setOtpRequested(true);
-      setDemoOtp(response.data.otp);
-      setOtp(response.data.otp); // auto-fill OTP for convenience
       if (role === 'GUEST') {
         window.localStorage.setItem(RECENT_GUEST_KEY, JSON.stringify({ name: name.trim(), phone: sanitizedPhone }));
       } else {
         window.localStorage.setItem(RECENT_DRIVER_KEY, JSON.stringify({ phone: sanitizedPhone }));
       }
-    } catch (err) {
-      setError(extractApiError(err, 'Failed to request OTP. Please try again.'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError('');
-
-    try {
-      const response = await verifyOtp({
-        phone: sanitizePhone(phone),
-        otp: otp.trim(),
-        role: role === 'GUEST' ? 'GUEST' : 'DRIVER',
-      });
+      debugAuth('Login succeeded', { role: response.data.user.role, userId: response.data.user.id });
       saveAuthSession(response.data);
       navigate(getHomeRouteForRole(response.data.user.role), { replace: true });
     } catch (err) {
-      setError(extractApiError(err, 'Failed to verify OTP. Please try again.'));
+      console.error('[auth-debug] Login failed', err);
+      setError(extractApiError(err, 'Login failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -168,8 +211,6 @@ export default function LoginPage() {
       setSubmitting(false);
     }
   };
-
-  const isOtpRole = role === 'GUEST' || role === 'DRIVER';
 
   return (
     <div className="wedding-app-bg flex items-center justify-center p-4 relative overflow-hidden">
@@ -236,7 +277,7 @@ export default function LoginPage() {
               </button>
             </form>
           ) : (
-            <form onSubmit={otpRequested ? handleVerifyOtp : handleRequestOtp} className="space-y-4">
+            <form onSubmit={handleUserLogin} className="space-y-4">
               {role === 'GUEST' && (
                 <div>
                   <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif", letterSpacing: '0.05em' }}>Your Name</label>
@@ -265,34 +306,9 @@ export default function LoginPage() {
                     placeholder="9876543210"
                     className="wedding-input pl-10"
                     required
-                    disabled={otpRequested}
                   />
                 </div>
               </div>
-
-              {otpRequested && (
-                <>
-                  <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--w-border)', color: 'var(--w-muted)' }}>
-                    Your OTP: <span className="font-mono font-bold tracking-[0.2em]" style={{ color: 'var(--w-accent-strong)' }}>{demoOtp}</span>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif", letterSpacing: '0.05em' }}>Enter OTP</label>
-                    <div className="relative">
-                      <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
-                        placeholder="Enter 6-digit OTP"
-                        className="wedding-input pl-10 tracking-[0.35em]"
-                        required
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
 
               {error && (
                 <div className="rounded-xl px-4 py-3 text-sm border" style={{ color: '#991b1b', background: '#fef2f2', borderColor: '#fecaca' }}>
@@ -300,28 +316,12 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <button type="submit" className="w-full py-3 wedding-button-primary" disabled={submitting || (role === 'GUEST' && !name.trim()) || !phone.trim() || (otpRequested && otp.trim().length !== 6)}>
+              <button type="submit" className="w-full py-3 wedding-button-primary" disabled={submitting || (role === 'GUEST' && !name.trim()) || !phone.trim()}>
                 <span className="inline-flex items-center justify-center gap-2">
                   {submitting && <LoaderCircle className="w-4 h-4 animate-spin" />}
-                  {otpRequested ? 'Verify & Continue' : `Send ${isOtpRole ? 'OTP' : 'Code'}`}
+                  Continue
                 </span>
               </button>
-
-              {otpRequested && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOtpRequested(false);
-                    setOtp('');
-                    setDemoOtp('');
-                    setError('');
-                  }}
-                  className="w-full py-3 rounded-xl border text-sm font-semibold"
-                  style={{ borderColor: 'var(--w-border)', color: 'var(--w-muted)' }}
-                >
-                  Use a different number
-                </button>
-              )}
             </form>
           )}
         </div>

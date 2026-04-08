@@ -1,12 +1,12 @@
 import api from './http';
 import type { AuthSession } from '../lib/auth';
-import type { RequestOtpPayload, RequestOtpResponse, VerifyOtpPayload, AdminLoginPayload } from './types';
+import type { GuestLoginPayload, DriverLoginPayload, AdminLoginPayload } from './types';
 
-export const requestOtp = (payload: RequestOtpPayload) =>
-  api.post<RequestOtpResponse>('/api/v1/auth/request-otp', payload);
+export const guestLogin = (payload: GuestLoginPayload) =>
+  api.post<AuthSession>('/api/v1/auth/guest-login', payload);
 
-export const verifyOtp = (payload: VerifyOtpPayload) =>
-  api.post<AuthSession>('/api/v1/auth/verify-otp', payload);
+export const driverLogin = (payload: DriverLoginPayload) =>
+  api.post<AuthSession>('/api/v1/auth/driver-login', payload);
 
 export const adminLogin = (payload: AdminLoginPayload) =>
   api.post<AuthSession>('/api/v1/auth/admin-login', payload);

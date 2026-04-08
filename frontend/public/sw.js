@@ -1,18 +1,85 @@
-const CACHE_NAME = 'event-transport-v1';
+const SW_VERSION = new URL(self.location.href).searchParams.get('appVersion') || 'dev';
+const CACHE_PREFIX = 'event-transport';
+const CACHE_NAME = `${CACHE_PREFIX}-${SW_VERSION}`;
+const STATIC_DESTINATIONS = new Set(['script', 'style', 'font', 'image']);
 
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
+function isCacheableResponse(response) {
+  return response && response.ok && (response.type === 'basic' || response.type === 'default');
+}
+
+async function putInCache(request, response) {
+  if (!isCacheableResponse(response)) {
+    return response;
+  }
+
+  const cache = await caches.open(CACHE_NAME);
+  await cache.put(request, response.clone());
+  return response;
+}
+
+async function networkFirst(request, fallbackResponse) {
+  try {
+    const response = await fetch(request);
+    return await putInCache(request, response);
+  } catch (error) {
+    const cached = await caches.match(request);
+    return cached || fallbackResponse;
+  }
+}
+
+async function cacheFirst(request, fallbackResponse) {
+  const cached = await caches.match(request);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const response = await fetch(request);
+    return await putInCache(request, response);
+  } catch (error) {
+    return fallbackResponse;
+  }
+}
+
+self.addEventListener('install', () => {
+  // Wait for an explicit user action before activating a newly installed worker.
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+  event.waitUntil((async () => {
+    const cacheNames = await caches.keys();
+    await Promise.all(
+      cacheNames
+        .filter((cacheName) => cacheName.startsWith(CACHE_PREFIX) && cacheName !== CACHE_NAME)
+        .map((cacheName) => caches.delete(cacheName))
+    );
+
+    await clients.claim();
+  })());
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network-first strategy for API calls
-  if (event.request.url.includes('/api/')) {
+  const { request } = event;
+
+  if (request.method !== 'GET') {
+    return;
+  }
+
+  const url = new URL(request.url);
+
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  if (url.pathname.startsWith('/api/')) {
     event.respondWith(
-      fetch(event.request).catch(() =>
+      fetch(request).catch(() =>
         new Response(JSON.stringify({ error: 'Network unavailable' }), {
           status: 503,
           headers: { 'Content-Type': 'application/json' },
@@ -22,17 +89,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for static assets
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      networkFirst(
+        request,
+        new Response('Offline', {
+          status: 503,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        })
+      )
+    );
+    return;
+  }
+
+  const isStaticAsset =
+    STATIC_DESTINATIONS.has(request.destination) ||
+    url.pathname.startsWith('/assets/') ||
+    url.pathname.startsWith('/icons/') ||
+    url.pathname === '/manifest.json' ||
+    url.pathname === '/vite.svg';
+
+  if (!isStaticAsset) {
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseClone);
-        });
-        return response;
-      }).catch(() => new Response('Offline', { status: 503 }));
-    })
+    cacheFirst(request, new Response('Offline', { status: 503 }))
   );
 });
 
@@ -60,7 +142,7 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window' }).then((clientList) => {
       for (let client of clientList) {
-        if (client.url === '/' && 'focus' in client) {
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
           return client.focus();
         }
       }

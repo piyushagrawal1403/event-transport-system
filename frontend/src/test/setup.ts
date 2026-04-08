@@ -12,12 +12,21 @@ Object.defineProperty(global, "Notification", {
 
 Object.defineProperty(navigator, "serviceWorker", {
   value: {
+    controller: null,
     ready: Promise.resolve({
       pushManager: { subscribe: vi.fn(), getSubscription: vi.fn().mockResolvedValue(null) },
     }),
-    register: vi.fn(),
+    register: vi.fn().mockResolvedValue({
+      waiting: null,
+      installing: null,
+      update: vi.fn().mockResolvedValue(undefined),
+      addEventListener: vi.fn(),
+      pushManager: { subscribe: vi.fn(), getSubscription: vi.fn().mockResolvedValue(null) },
+    }),
     getRegistration: vi.fn(),
+    addEventListener: vi.fn(),
   },
   writable: true,
+  configurable: true,
 });
 

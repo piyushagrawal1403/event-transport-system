@@ -1,5 +1,6 @@
 // src/services/PushNotificationService.ts
 import { getVapidPublicKey, subscribeToPush, unsubscribeFromPush } from '../api/client';
+import { getAppServiceWorkerRegistration, registerAppServiceWorker } from '../lib/serviceWorker';
 
 export class PushNotificationService {
   private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
@@ -17,10 +18,14 @@ export class PushNotificationService {
     }
 
     try {
-      const existingRegistration = await navigator.serviceWorker.getRegistration('/sw.js');
-      this.serviceWorkerRegistration = existingRegistration ?? await navigator.serviceWorker.register('/sw.js');
+      this.serviceWorkerRegistration = await getAppServiceWorkerRegistration();
+
+      if (!this.serviceWorkerRegistration) {
+        this.serviceWorkerRegistration = await registerAppServiceWorker();
+      }
+
       await navigator.serviceWorker.ready;
-      this.serviceWorkerRegistration = await navigator.serviceWorker.getRegistration('/sw.js') ?? null;
+      this.serviceWorkerRegistration = await getAppServiceWorkerRegistration();
     } catch (error) {
       console.error('Service Worker registration failed:', error);
     }

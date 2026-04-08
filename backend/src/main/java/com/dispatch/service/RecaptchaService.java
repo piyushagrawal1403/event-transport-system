@@ -1,12 +1,19 @@
 package com.dispatch.service;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.Arrays;
 
 @Service
 public class RecaptchaService {
@@ -17,39 +24,52 @@ public class RecaptchaService {
     private final String recaptchaSecretKey;
     private final double recaptchaThreshold;
     private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper;
 
     public RecaptchaService(
             @Value("${app.recaptcha.secret-key:}") String recaptchaSecretKey,
             @Value("${app.recaptcha.threshold:0.5}") double recaptchaThreshold,
-            RestTemplate restTemplate,
-            ObjectMapper objectMapper) {
+            RestTemplate restTemplate) {
         this.recaptchaSecretKey = recaptchaSecretKey;
         this.recaptchaThreshold = recaptchaThreshold;
         this.restTemplate = restTemplate;
-        this.objectMapper = objectMapper;
     }
 
     /**
-     * Verifies reCAPTCHA v3 token from frontend
-     * Returns true if token is valid and score >= threshold
+     * Verifies reCAPTCHA v3 token from frontend.
+     * Google siteverify requires application/x-www-form-urlencoded — NOT JSON.
      */
     public boolean verifyToken(String token) {
         if (recaptchaSecretKey == null || recaptchaSecretKey.isBlank()) {
-            logger.warn("reCAPTCHA secret key not configured, skipping verification");
-            return true; // Allow if not configured (for dev)
+            logger.warn("reCAPTCHA secret key not configured — skipping verification (dev mode)");
+            return true;
         }
 
         try {
-            RecaptchaRequest request = new RecaptchaRequest(recaptchaSecretKey, token);
-            RecaptchaResponse response = restTemplate.postForObject(RECAPTCHA_VERIFY_URL, request, RecaptchaResponse.class);
+            // Google siteverify requires form-encoded body, not JSON
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-            if (response == null || !response.success) {
-                logger.warn("reCAPTCHA verification failed: {}", response != null ? response.errorCodes : "null response");
+            MultiValueMap<String, String> formParams = new LinkedMultiValueMap<>();
+            formParams.add("secret", recaptchaSecretKey);
+            formParams.add("response", token);
+
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(formParams, headers);
+
+            RecaptchaResponse response = restTemplate.postForObject(
+                    RECAPTCHA_VERIFY_URL, request, RecaptchaResponse.class);
+
+            if (response == null) {
+                logger.warn("reCAPTCHA: null response from Google");
                 return false;
             }
 
-            logger.info("reCAPTCHA verified successfully. Score: {}, Action: {}", response.score, response.action);
+            if (!response.success) {
+                logger.warn("reCAPTCHA verification failed. error-codes: {}",
+                        response.errorCodes != null ? Arrays.toString(response.errorCodes) : "none");
+                return false;
+            }
+
+            logger.info("reCAPTCHA passed. score={} action={}", response.score, response.action);
 
             if (response.score < recaptchaThreshold) {
                 logger.warn("reCAPTCHA score {} is below threshold {}", response.score, recaptchaThreshold);
@@ -58,19 +78,8 @@ public class RecaptchaService {
 
             return true;
         } catch (Exception e) {
-            logger.error("Error verifying reCAPTCHA token", e);
+            logger.error("Error calling reCAPTCHA siteverify", e);
             return false;
-        }
-    }
-
-    // Request/Response DTOs for reCAPTCHA API
-    static class RecaptchaRequest {
-        public String secret;
-        public String response;
-
-        RecaptchaRequest(String secret, String response) {
-            this.secret = secret;
-            this.response = response;
         }
     }
 
@@ -79,6 +88,7 @@ public class RecaptchaService {
         public boolean success;
         public double score;
         public String action;
+        @JsonProperty("error-codes")
         public String[] errorCodes;
     }
 }

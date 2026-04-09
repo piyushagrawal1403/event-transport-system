@@ -1,6 +1,7 @@
 package com.dispatch.service;
 
 import com.dispatch.dto.CreateComplaintDto;
+import com.dispatch.model.ComplaintCategory;
 import com.dispatch.model.Complaint;
 import com.dispatch.model.ComplaintStatus;
 import com.dispatch.repository.ComplaintRepository;
@@ -53,7 +54,19 @@ class ComplaintServiceTest {
 
         assertNotNull(result);
         assertEquals(ComplaintStatus.OPEN, result.getStatus());
+        assertEquals(ComplaintCategory.OTHERS, result.getCategory());
         assertEquals("Driver was rude", result.getMessage());
+    }
+
+    @Test
+    void getGuestComplaints_filtersByGuestPhone() {
+        when(complaintRepository.findByGuestPhoneOrderByCreatedAtDesc("9999999999"))
+                .thenReturn(List.of());
+
+        List<Complaint> result = complaintService.getGuestComplaints("+91-9999999999");
+
+        assertNotNull(result);
+        verify(complaintRepository).findByGuestPhoneOrderByCreatedAtDesc("9999999999");
     }
 
     @Test

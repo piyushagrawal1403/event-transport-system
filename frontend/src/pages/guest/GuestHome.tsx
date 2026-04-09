@@ -1,10 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Car, Phone, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, Flag, MessageSquare, CalendarDays, Headset, ChevronDown, X, MapPin } from 'lucide-react';
-import { createRide, getLocations, getGuestRides, getConfig, createComplaint, type Location, type RideRequest, type RideRequestPayload } from '../../api/client';
+import {
+  createRide,
+  getLocations,
+  getGuestRides,
+  getConfig,
+  createComplaint,
+  getMyComplaints,
+  type Location,
+  type RideRequest,
+  type RideRequestPayload,
+  type Complaint,
+  type ComplaintCategory,
+} from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
 import { clearAuthSession, getGuestIdentity } from '../../lib/auth';
+import { parseSupportContacts } from '../../lib/supportContacts';
 import { useGuestPush } from './hooks/useGuestPush';
 import GuestActiveRideCard from './components/GuestActiveRideCard';
 
@@ -30,6 +43,9 @@ export default function GuestHome() {
   const [, setLoadingRides] = useState(true);
   const [adminPhone, setAdminPhone] = useState('');
   const [adminName, setAdminName] = useState('');
+  const [guestComplaints, setGuestComplaints] = useState<Complaint[]>([]);
+  const [loadingComplaints, setLoadingComplaints] = useState(false);
+  const [complaintCategory, setComplaintCategory] = useState<ComplaintCategory>('RIDE');
   const [complaintMessage, setComplaintMessage] = useState('');
   const [complaintRideId, setComplaintRideId] = useState<string>('');
   const [submittingComplaint, setSubmittingComplaint] = useState(false);
@@ -56,6 +72,19 @@ export default function GuestHome() {
 
   const { unsubscribe } = useGuestPush(guestPhone);
 
+  const fetchComplaints = useCallback(async () => {
+    if (!guestPhone) return;
+    setLoadingComplaints(true);
+    try {
+      const res = await getMyComplaints();
+      setGuestComplaints(res.data);
+    } catch {
+      // Keep existing UI data on transient failures.
+    } finally {
+      setLoadingComplaints(false);
+    }
+  }, [guestPhone]);
+
   const fetchRides = useCallback(async () => {
     if (!guestPhone) return;
     try {
@@ -74,9 +103,16 @@ export default function GuestHome() {
     return () => clearInterval(interval);
   }, [fetchRides]);
 
+  useEffect(() => {
+    fetchComplaints();
+    const interval = setInterval(fetchComplaints, 15000);
+    return () => clearInterval(interval);
+  }, [fetchComplaints]);
+
   const hotels = locations.filter(l => !l.isMainVenue);
   const venue = locations.find(l => l.isMainVenue);
   const hasActiveRides = activeRides.length > 0;
+  const supportContacts = parseSupportContacts(adminName, adminPhone);
 
   const toggleSection = (section: 'schedule' | 'ride' | 'support' | 'complaints') => {
     setOpenModal(section);
@@ -122,11 +158,14 @@ export default function GuestHome() {
       await createComplaint({
         guestName,
         guestPhone,
+        category: complaintCategory,
         message: complaintMessage.trim(),
         rideRequestId: complaintRideId ? Number(complaintRideId) : undefined,
       });
+      await fetchComplaints();
       setComplaintMessage('');
       setComplaintRideId('');
+      setComplaintCategory('RIDE');
       setComplaintSuccess('Complaint submitted. Admin will review it.');
       window.setTimeout(() => setComplaintSuccess(''), 4000);
       return true;
@@ -201,7 +240,9 @@ export default function GuestHome() {
               <ChevronDown className="w-4 h-4" style={{ color: 'var(--w-muted)' }} />
             </div>
             <p className="mt-3 text-base font-semibold" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif" }}>Support Helpline</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--w-muted)' }}>{adminPhone ? adminName || 'Event Admin' : 'Not configured'}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--w-muted)' }}>
+              {supportContacts.length > 0 ? `${supportContacts.length} contact${supportContacts.length > 1 ? 's' : ''} available` : 'Not configured'}
+            </p>
           </button>
 
           <button
@@ -216,7 +257,7 @@ export default function GuestHome() {
               <ChevronDown className="w-4 h-4" style={{ color: 'var(--w-muted)' }} />
             </div>
             <p className="mt-3 text-base font-semibold" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif" }}>Complaints</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--w-muted)' }}>Report ride issues</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--w-muted)' }}>{guestComplaints.length} raised</p>
           </button>
         </div>
 
@@ -250,13 +291,20 @@ export default function GuestHome() {
                 <div className="wedding-card px-4 py-4 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif" }}>Support Helpline</p>
-                    <p className="text-base font-semibold truncate" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif" }}>{adminName || 'Event Admin'}</p>
+                    <p className="text-base font-semibold truncate" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif" }}>Event Support Team</p>
                   </div>
-                  {adminPhone ? (
-                    <a href={`tel:${adminPhone}`} className="flex items-center gap-2 wedding-button-primary px-4 py-3 flex-shrink-0">
-                      <Phone className="w-4 h-4" />
-                      {adminPhone}
-                    </a>
+                  {supportContacts.length > 0 ? (
+                    <div className="flex flex-col gap-2 items-end">
+                      {supportContacts.map((contact, index) => (
+                        <a key={`${contact.phone}-${index}`} href={`tel:${contact.phone}`} className="flex items-center gap-2 wedding-button-primary px-4 py-3 flex-shrink-0">
+                          <Phone className="w-4 h-4" />
+                          <span className="text-left">
+                            <span className="block text-xs opacity-90">{contact.name}</span>
+                            <span className="block">{contact.phone}</span>
+                          </span>
+                        </a>
+                      ))}
+                    </div>
                   ) : (
                     <p className="text-xs" style={{ color: 'var(--w-muted)' }}>No support number yet</p>
                   )}
@@ -376,6 +424,22 @@ export default function GuestHome() {
               </div>
               <div className="wedding-modal-body space-y-4">
                 <p className="text-sm" style={{ color: 'var(--w-muted)' }}>Tell the admin what went wrong.</p>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif" }}>
+                    Complaint Type
+                  </label>
+                  <select
+                    value={complaintCategory}
+                    onChange={(e) => setComplaintCategory(e.target.value as ComplaintCategory)}
+                    className="wedding-input text-sm mt-2"
+                  >
+                    <option value="RIDE">Ride issue</option>
+                    <option value="HOTEL">Hotel issue</option>
+                    <option value="DRIVER_BEHAVIOR">Driver behavior</option>
+                    <option value="APP_ISSUE">App issue</option>
+                    <option value="OTHERS">Others</option>
+                  </select>
+                </div>
                 <textarea
                   value={complaintMessage}
                   onChange={(e) => setComplaintMessage(e.target.value)}
@@ -397,6 +461,41 @@ export default function GuestHome() {
                   {submittingComplaint ? 'Submitting...' : 'Submit Complaint'}
                 </button>
                 {complaintSuccess && <p className="text-sm text-green-600 font-medium text-center">{complaintSuccess}</p>}
+
+                <div className="wedding-card p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif" }}>
+                      Your Complaints
+                    </p>
+                    <span className="wedding-pill">{guestComplaints.length} total</span>
+                  </div>
+
+                  {loadingComplaints ? (
+                    <p className="text-xs" style={{ color: 'var(--w-muted)' }}>Loading complaints...</p>
+                  ) : guestComplaints.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--w-muted)' }}>No complaints raised yet.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {guestComplaints.map((complaint) => (
+                        <div key={complaint.id} className="wedding-soft-card p-2 text-xs space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span style={{ color: 'var(--w-muted)' }}>{(complaint.category || 'OTHERS').replace(/_/g, ' ')}</span>
+                            <span className={`rounded-full px-2 py-0.5 font-semibold ${complaint.status === 'OPEN' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                              {complaint.status}
+                            </span>
+                          </div>
+                          <p style={{ color: 'var(--w-text)' }}>{complaint.message}</p>
+                          <p style={{ color: 'var(--w-muted)' }}>
+                            Raised {new Date(complaint.createdAt).toLocaleString()}
+                            {complaint.status === 'CLOSED' && complaint.closedAt
+                              ? ` | Closed ${new Date(complaint.closedAt).toLocaleString()}`
+                              : ''}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

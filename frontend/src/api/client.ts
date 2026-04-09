@@ -22,7 +22,7 @@ export {
 export { getEvents, getEventById, uploadEventImage, createEvent, updateEvent, getNotifications } from './events';
 
 // Complaints
-export { createComplaint, getComplaints, closeComplaint } from './complaints';
+export { createComplaint, getComplaints, getMyComplaints, closeComplaint } from './complaints';
 
 // Push
 export { subscribeToPush, unsubscribeFromPush, getVapidPublicKey, getAdminPushSubscriptions, sendAdminTestPush } from './push';
@@ -40,7 +40,7 @@ export type {
   Cab, Location, AssignPayload, RideIncidentType, CancelledQueueEntry,
   DriverAnalytics, TopDriver, AdminDailyReport,
   EventItinerary,
-  ComplaintStatus, Complaint,
+  ComplaintStatus, ComplaintCategory, Complaint,
   AppNotification,
   PushSubscriptionPayload, PushSubscriptionEntry,
 } from './types';

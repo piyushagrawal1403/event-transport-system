@@ -29,11 +29,24 @@ public class ConfigController {
     @PutMapping
     public ResponseEntity<Map<String, String>> updateConfig(@RequestBody Map<String, String> updates) {
         if (updates.containsKey("adminPhone")) {
-            settingRepository.save(new AppSetting("admin.phone", updates.get("adminPhone")));
+            settingRepository.save(new AppSetting("admin.phone", normalizePhoneList(updates.get("adminPhone"))));
         }
         if (updates.containsKey("adminName")) {
             settingRepository.save(new AppSetting("admin.name", updates.get("adminName")));
         }
         return getConfig();
+    }
+
+    private String normalizePhoneList(String rawValue) {
+        if (rawValue == null) {
+            return "";
+        }
+
+        return java.util.Arrays.stream(rawValue.split("[\\n,;]+"))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("");
     }
 }

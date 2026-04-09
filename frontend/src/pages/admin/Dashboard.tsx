@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, AlertTriangle,
   RefreshCw, Send, ChevronDown, ChevronUp, Clock, Bell, BellRing,
-  Settings, Save, Phone, User, X, MessageSquare, LogOut, MoreVertical
+  Settings, Save, User, X, MessageSquare, LogOut, MoreVertical
 } from 'lucide-react';
 import {
   assignRides, closeComplaint, createEvent, updateEvent, uploadEventImage,
@@ -14,6 +14,7 @@ import {
 } from '../../api/client';
 import { clearAuthSession, getAuthSession } from '../../lib/auth';
 import { pushNotificationService } from '../../services/PushNotificationService';
+import { parseSupportContacts, serializeSupportContacts, type SupportContact } from '../../lib/supportContacts';
 
 import { useAdminPush } from './hooks/useAdminPush';
 import { useAdminPolling } from './hooks/useAdminPolling';
@@ -69,9 +70,42 @@ export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [supportContactInputs, setSupportContactInputs] = useState<SupportContact[]>([{ name: '', phone: '' }]);
 
   const { groups, cabs, ongoingRides, cancelledRides, events, complaints, locations, loading, unauthorized, lastRefresh, settingsForm, fetchData, fetchEvents, setSettingsForm } = polling;
   const { adminPushPermission, adminPushEnabled, enablingAdminPush, pushSubCount, loadingPushSubCount, sendingTestPush, testPushResult, handleEnableAdminNotifications, handleLoadPushSubCount, handleSendTestPush, resetPushDebug } = push;
+
+  useEffect(() => {
+    if (!showSettings) return;
+    const parsed = parseSupportContacts(settingsForm.adminName, settingsForm.adminPhone);
+    setSupportContactInputs(parsed.length > 0 ? parsed : [{ name: '', phone: '' }]);
+  }, [showSettings, settingsForm.adminName, settingsForm.adminPhone]);
+
+  const openSettingsModal = () => {
+    const parsed = parseSupportContacts(settingsForm.adminName, settingsForm.adminPhone);
+    setSupportContactInputs(parsed.length > 0 ? parsed : [{ name: '', phone: '' }]);
+    setShowSettings(true);
+    resetPushDebug();
+  };
+
+  const updateSupportContactInput = (index: number, field: 'name' | 'phone', value: string) => {
+    setSupportContactInputs((prev) => prev.map((entry, idx) => (
+      idx === index ? { ...entry, [field]: value } : entry
+    )));
+  };
+
+  const addSupportContactInput = () => {
+    setSupportContactInputs((prev) => [...prev, { name: '', phone: '' }]);
+  };
+
+  const removeSupportContactInput = (index: number) => {
+    setSupportContactInputs((prev) => {
+      if (prev.length === 1) {
+        return [{ name: '', phone: '' }];
+      }
+      return prev.filter((_, idx) => idx !== index);
+    });
+  };
 
   const toggleRide = (rideId: number, paxCount: number) => {
     setSelectedRides(prev => {
@@ -105,10 +139,28 @@ export default function Dashboard() {
   };
 
   const handleSaveSettings = async () => {
-    if (!settingsForm.adminName.trim() || !settingsForm.adminPhone.trim()) return;
+    const hasAnyRowData = supportContactInputs.some((entry) => entry.name.trim() || entry.phone.trim());
+    const hasPartialRow = supportContactInputs.some((entry) => {
+      const hasName = entry.name.trim().length > 0;
+      const hasPhone = entry.phone.trim().length > 0;
+      return (hasName && !hasPhone) || (!hasName && hasPhone);
+    });
+
+    if (!hasAnyRowData || hasPartialRow) {
+      alert('Each support contact must include both name and mobile number.');
+      return;
+    }
+
+    const serialized = serializeSupportContacts(supportContactInputs);
+    if (!serialized.adminName || !serialized.adminPhone) {
+      return;
+    }
+
     setSavingSettings(true);
     try {
-      await updateConfig({ adminName: settingsForm.adminName.trim(), adminPhone: settingsForm.adminPhone.trim() });
+      await updateConfig({ adminName: serialized.adminName, adminPhone: serialized.adminPhone });
+      setSettingsForm((prev) => ({ ...prev, adminName: serialized.adminName, adminPhone: serialized.adminPhone }));
+      setSupportContactInputs(parseSupportContacts(serialized.adminName, serialized.adminPhone));
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch {
@@ -125,8 +177,10 @@ export default function Dashboard() {
   }, [navigate]);
 
   const handleCloseComplaint = async (complaintId: number) => {
+    const supportContacts = parseSupportContacts(settingsForm.adminName, settingsForm.adminPhone);
+    const closedByName = supportContacts[0]?.name || settingsForm.adminName || 'admin';
     try {
-      await closeComplaint(complaintId, settingsForm.adminName || 'admin');
+      await closeComplaint(complaintId, closedByName);
       await fetchData();
     } catch {
       alert('Failed to close complaint.');
@@ -253,7 +307,7 @@ export default function Dashboard() {
                       <Bell className="h-4 w-4" />
                       {enablingAdminPush ? 'Enabling alerts…' : adminPushEnabled ? 'Refresh alerts' : 'Enable alerts'}
                     </button>
-                    <button onClick={() => { setShowSettings(true); setShowMobileHeaderMenu(false); resetPushDebug(); }} className="flex h-11 w-full touch-manipulation items-center gap-2 rounded-lg px-3 text-sm hover:bg-gray-700" type="button">
+                    <button onClick={() => { openSettingsModal(); setShowMobileHeaderMenu(false); }} className="flex h-11 w-full touch-manipulation items-center gap-2 rounded-lg px-3 text-sm hover:bg-gray-700" type="button">
                       <Settings className="h-4 w-4" />Settings
                     </button>
                     <button onClick={() => { setShowMobileHeaderMenu(false); void handleLogout(); }} className="flex h-11 w-full touch-manipulation items-center gap-2 rounded-lg px-3 text-sm text-red-300 hover:bg-gray-700" type="button">
@@ -274,7 +328,7 @@ export default function Dashboard() {
                 <span className={`rounded-full px-1.5 py-0.5 text-xs ${openComplaintsCount > 0 ? 'bg-yellow-900 text-yellow-300' : 'bg-gray-600 text-gray-200'}`}>{openComplaintsCount}</span>
               </button>
               <button onClick={fetchData} className="inline-flex h-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 transition hover:bg-gray-700" title="Refresh" type="button"><RefreshCw className="h-4 w-4" /></button>
-              <button onClick={() => { setShowSettings(true); resetPushDebug(); }} className="inline-flex h-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 transition hover:bg-gray-700" title="Settings" type="button"><Settings className="h-4 w-4" /></button>
+              <button onClick={openSettingsModal} className="inline-flex h-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 transition hover:bg-gray-700" title="Settings" type="button"><Settings className="h-4 w-4" /></button>
               <button onClick={() => { void handleLogout(); }} className="inline-flex h-11 touch-manipulation items-center justify-center rounded-lg bg-gray-800 px-3 text-sm font-medium transition hover:bg-gray-700" title="Logout" type="button"><LogOut className="h-4 w-4" /><span>Logout</span></button>
 
               <div className="col-span-4 mt-0.5 hidden flex-wrap items-center justify-between gap-1.5 sm:col-span-full sm:mt-0 sm:flex sm:justify-end sm:gap-2">
@@ -431,14 +485,46 @@ export default function Dashboard() {
             <div className="p-4 space-y-3">
               <p className="text-xs text-gray-500">Admin contact shown to guests and drivers.</p>
               <div>
-                <label className="flex items-center gap-1 text-xs text-gray-400 mb-1"><User className="w-3 h-3" /> Admin Name</label>
-                <input type="text" value={settingsForm.adminName} onChange={e => setSettingsForm(f => ({ ...f, adminName: e.target.value }))} placeholder="e.g. Ravi Kumar" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                <label className="flex items-center gap-1 text-xs text-gray-400 mb-1"><User className="w-3 h-3" /> Support Contacts (Name + Number)</label>
+                <div className="space-y-2">
+                  {supportContactInputs.map((contact, index) => (
+                    <div key={`support-contact-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                      <input
+                        type="text"
+                        value={contact.name}
+                        onChange={e => updateSupportContactInput(index, 'name', e.target.value)}
+                        placeholder={`Contact name ${index + 1}`}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={contact.phone}
+                        onChange={e => updateSupportContactInput(index, 'phone', e.target.value)}
+                        placeholder={`Support number ${index + 1}`}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      />
+                      <button
+                        onClick={() => removeSupportContactInput(index)}
+                        className="px-2.5 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-xs font-semibold transition"
+                        disabled={supportContactInputs.length === 1}
+                        type="button"
+                        title="Remove contact"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={addSupportContactInput}
+                    className="w-full py-2 rounded-lg border border-dashed border-gray-600 text-xs text-gray-300 hover:bg-gray-700 transition"
+                    type="button"
+                  >
+                    + Add another contact
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-gray-500">Guests and drivers will see all saved names with their numbers.</p>
               </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs text-gray-400 mb-1"><Phone className="w-3 h-3" /> Admin Phone</label>
-                <input type="tel" value={settingsForm.adminPhone} onChange={e => setSettingsForm(f => ({ ...f, adminPhone: e.target.value }))} placeholder="e.g. +91-9900000000" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-              </div>
-              <button onClick={handleSaveSettings} disabled={savingSettings || !settingsForm.adminName.trim() || !settingsForm.adminPhone.trim()} className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={handleSaveSettings} disabled={savingSettings || supportContactInputs.every((entry) => !entry.name.trim() && !entry.phone.trim())} className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                 <Save className="w-4 h-4" />{savingSettings ? 'Saving…' : settingsSaved ? '✓ Saved!' : 'Save Settings'}
               </button>
               {/* Push Notification Debug Panel */}

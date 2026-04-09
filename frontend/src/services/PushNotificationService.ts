@@ -1,6 +1,10 @@
 // src/services/PushNotificationService.ts
 import { getVapidPublicKey, subscribeToPush, unsubscribeFromPush } from '../api/client';
-import { getAppServiceWorkerRegistration, registerAppServiceWorker } from '../lib/serviceWorker';
+import {
+  getAppServiceWorkerRegistration,
+  getExistingAppServiceWorkerRegistration,
+  registerAppServiceWorker,
+} from '../lib/serviceWorker';
 
 export class PushNotificationService {
   private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
@@ -116,10 +120,11 @@ export class PushNotificationService {
 
   async unsubscribeUser(): Promise<void> {
     if (!this.serviceWorkerRegistration) {
-      await this.initialize();
+      this.serviceWorkerRegistration = await getExistingAppServiceWorkerRegistration();
     }
 
     if (!this.serviceWorkerRegistration) {
+      this.lastSubscriptionFingerprint = '';
       return;
     }
 

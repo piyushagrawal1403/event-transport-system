@@ -28,12 +28,12 @@ export default function EventTimeline() {
     grouped[key].push(e);
   });
   return (
-    <div className="wedding-card p-4 mb-4">
+    <div className="wedding-card p-4 mb-4 min-h-[30rem]">
       <h2 className="text-lg font-semibold flex items-center gap-2 mb-4" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif" }}>
         <Calendar className="w-4 h-4" style={{ color: 'var(--w-accent)' }} />
         Event Schedule
       </h2>
-      <div className="max-h-64 overflow-y-auto space-y-3">
+      <div className="max-h-[24rem] overflow-y-auto space-y-3">
         {Object.entries(grouped).map(([date, items]) => (
           <div key={date}>
             <p className="text-xs font-semibold mb-2 uppercase tracking-widest" style={{ color: 'var(--w-accent-strong)', fontFamily: "'Cinzel', serif" }}>{date}</p>

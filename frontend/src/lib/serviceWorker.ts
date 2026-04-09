@@ -9,6 +9,50 @@ let shouldReloadOnControllerChange = false;
 const listeners = new Set<ServiceWorkerUpdateListener>();
 const observedRegistrations = new WeakSet<ServiceWorkerRegistration>();
 
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (error === undefined) {
+    return 'unknown browser rejection';
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function isAppServiceWorkerRegistration(registration: ServiceWorkerRegistration | null | undefined): registration is ServiceWorkerRegistration {
+  const scriptURL = registration?.active?.scriptURL || registration?.waiting?.scriptURL || registration?.installing?.scriptURL;
+  return Boolean(scriptURL && scriptURL.includes('/sw.js'));
+}
+
+export async function getExistingAppServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) {
+    return null;
+  }
+
+  try {
+    const direct = await navigator.serviceWorker.getRegistration();
+    if (isAppServiceWorkerRegistration(direct)) {
+      return direct;
+    }
+  } catch {
+    // Ignore and continue with broader lookup.
+  }
+
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    return registrations.find((registration) => isAppServiceWorkerRegistration(registration)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function notifyListeners(registration: ServiceWorkerRegistration | null) {
   waitingRegistration = registration?.waiting ? registration : null;
   listeners.forEach((listener) => listener(waitingRegistration));
@@ -96,7 +140,7 @@ export async function registerAppServiceWorker(): Promise<ServiceWorkerRegistrat
         return registration;
       })
       .catch((error) => {
-        console.error('Service Worker registration failed:', error);
+        console.warn('Service Worker registration skipped:', describeError(error));
         registrationPromise = null;
         return null;
       });
@@ -111,11 +155,7 @@ export async function getAppServiceWorkerRegistration(): Promise<ServiceWorkerRe
     return registration;
   }
 
-  if (!('serviceWorker' in navigator)) {
-    return null;
-  }
-
-  return (await navigator.serviceWorker.getRegistration('/')) ?? null;
+  return getExistingAppServiceWorkerRegistration();
 }
 
 export function subscribeToServiceWorkerUpdates(listener: ServiceWorkerUpdateListener) {

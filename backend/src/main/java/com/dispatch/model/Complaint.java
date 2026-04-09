@@ -21,6 +21,10 @@ public class Complaint {
     @Column(nullable = false, length = 2000)
     private String message;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 40)
+    private ComplaintCategory category = ComplaintCategory.OTHERS;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "ride_request_id")
     private RideRequest rideRequest;
@@ -44,6 +48,9 @@ public class Complaint {
         if (status == null) {
             status = ComplaintStatus.OPEN;
         }
+        if (category == null) {
+            category = ComplaintCategory.OTHERS;
+        }
     }
 
     public Long getId() { return id; }
@@ -57,6 +64,9 @@ public class Complaint {
 
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
+
+    public ComplaintCategory getCategory() { return category; }
+    public void setCategory(ComplaintCategory category) { this.category = category; }
 
     public RideRequest getRideRequest() { return rideRequest; }
     public void setRideRequest(RideRequest rideRequest) { this.rideRequest = rideRequest; }

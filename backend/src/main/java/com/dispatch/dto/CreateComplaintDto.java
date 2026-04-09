@@ -1,5 +1,6 @@
 package com.dispatch.dto;
 
+import com.dispatch.model.ComplaintCategory;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
@@ -15,6 +16,8 @@ public class CreateComplaintDto {
 	@NotBlank(message = "Complaint message is required")
 	private String message;
 
+	private ComplaintCategory category;
+
 	private Long rideRequestId;
 
 	public String getGuestName() { return guestName; }
@@ -25,6 +28,9 @@ public class CreateComplaintDto {
 
 	public String getMessage() { return message; }
 	public void setMessage(String message) { this.message = message; }
+
+	public ComplaintCategory getCategory() { return category; }
+	public void setCategory(ComplaintCategory category) { this.category = category; }
 
 	public Long getRideRequestId() { return rideRequestId; }
 	public void setRideRequestId(Long rideRequestId) { this.rideRequestId = rideRequestId; }

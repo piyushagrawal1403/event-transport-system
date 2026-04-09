@@ -8,6 +8,7 @@ import com.dispatch.service.ComplaintService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -33,6 +34,15 @@ public class ComplaintController {
             @RequestParam(required = false) ComplaintStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ResponseEntity.ok(complaintService.getComplaints(status, date));
+    }
+
+    @GetMapping("/mine")
+    public ResponseEntity<List<Complaint>> getMyComplaints(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            return ResponseEntity.status(401).build();
+        }
+        String guestPhone = String.valueOf(authentication.getPrincipal());
+        return ResponseEntity.ok(complaintService.getGuestComplaints(guestPhone));
     }
 
     @RequestMapping(value = "/{id}/close", method = {RequestMethod.PATCH, RequestMethod.PUT})

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Car, Phone, KeyRound, Clock, MapPin, ArrowLeft, CheckCircle2, XCircle, PhoneCall } from 'lucide-react';
 import { getGuestRides, cancelRide, getConfig, type RideRequest } from '../../api/client';
 import { getGuestIdentity } from '../../lib/auth';
+import { parseSupportContacts } from '../../lib/supportContacts';
 
 // Statuses the guest/admin can cancel — anything before the driver starts the trip (IN_TRANSIT)
 const CANCELLABLE: RideRequest['status'][] = ['PENDING', 'OFFERED', 'ACCEPTED', 'ARRIVED'];
@@ -36,6 +37,8 @@ export default function RideStatus() {
   const navigate = useNavigate();
 
   const { phone: guestPhone } = getGuestIdentity();
+  const supportContacts = parseSupportContacts(adminName, adminPhone);
+  const primarySupportPhone = supportContacts[0]?.phone ?? '';
 
   const fetchRides = useCallback(async () => {
     if (!guestPhone) { navigate('/'); return; }
@@ -99,14 +102,14 @@ export default function RideStatus() {
             <h1 className="text-lg font-bold">Your Rides</h1>
           </div>
           {/* Admin contact in header */}
-          {adminPhone && (
+          {primarySupportPhone && (
             <a
-              href={`tel:${adminPhone}`}
+              href={`tel:${primarySupportPhone}`}
               className="flex items-center gap-1.5 text-sm bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded-lg transition"
-              title="Call dispatch"
+              title={`Call dispatch${supportContacts.length > 1 ? ` (${supportContacts.length} contacts configured)` : ''}`}
             >
               <PhoneCall className="w-4 h-4" />
-              <span className="hidden xs:inline">Help</span>
+              <span className="hidden xs:inline">Help{supportContacts.length > 1 ? ` (${supportContacts.length})` : ''}</span>
             </a>
           )}
         </div>
@@ -114,19 +117,27 @@ export default function RideStatus() {
 
       <div className="max-w-md mx-auto p-4 space-y-4">
         {/* Admin support banner */}
-        {adminPhone && (
+        {supportContacts.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Need help?</p>
-              <p className="text-sm font-semibold text-gray-800">{adminName || 'Dispatch Admin'}</p>
+              <p className="text-sm font-semibold text-gray-800">Support Contacts</p>
             </div>
-            <a
-              href={`tel:${adminPhone}`}
-              className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg transition"
-            >
-              <Phone className="w-4 h-4" />
-              {adminPhone}
-            </a>
+            <div className="flex flex-col items-end gap-2">
+              {supportContacts.map((contact, index) => (
+                <a
+                  key={`${contact.phone}-${index}`}
+                  href={`tel:${contact.phone}`}
+                  className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg transition"
+                >
+                  <Phone className="w-4 h-4" />
+                  <span className="text-left">
+                    <span className="block text-xs text-blue-600/80">{contact.name}</span>
+                    <span className="block">{contact.phone}</span>
+                  </span>
+                </a>
+              ))}
+            </div>
           </div>
         )}
 

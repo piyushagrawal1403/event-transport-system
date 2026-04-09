@@ -1,6 +1,7 @@
 package com.dispatch.service;
 
 import com.dispatch.dto.CreateComplaintDto;
+import com.dispatch.model.ComplaintCategory;
 import com.dispatch.model.Complaint;
 import com.dispatch.model.ComplaintStatus;
 import com.dispatch.model.RideRequest;
@@ -35,6 +36,7 @@ public class ComplaintService {
         complaint.setGuestName(dto.getGuestName().trim());
         complaint.setGuestPhone(sanitizePhone(dto.getGuestPhone()));
         complaint.setMessage(dto.getMessage().trim());
+        complaint.setCategory(dto.getCategory() == null ? ComplaintCategory.OTHERS : dto.getCategory());
 
         if (dto.getRideRequestId() != null) {
             RideRequest rideRequest = rideRequestRepository.findById(dto.getRideRequestId())
@@ -58,6 +60,10 @@ public class ComplaintService {
         Instant start = date.atStartOfDay(zoneId).toInstant();
         Instant end = date.plusDays(1).atStartOfDay(zoneId).toInstant();
         return complaintRepository.findForAdminFilters(status, start, end);
+    }
+
+    public List<Complaint> getGuestComplaints(String guestPhone) {
+        return complaintRepository.findByGuestPhoneOrderByCreatedAtDesc(sanitizePhone(guestPhone));
     }
 
     @Transactional

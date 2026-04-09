@@ -14,6 +14,7 @@ import java.util.List;
 public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     List<Complaint> findAllByOrderByCreatedAtDesc();
     List<Complaint> findByStatusOrderByCreatedAtDesc(ComplaintStatus status);
+    List<Complaint> findByGuestPhoneOrderByCreatedAtDesc(String guestPhone);
     long countByStatus(ComplaintStatus status);
 
     @Query("""

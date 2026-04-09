@@ -150,11 +150,13 @@ export interface EventItinerary {
 // === Complaint Types ===
 
 export type ComplaintStatus = 'OPEN' | 'CLOSED';
+export type ComplaintCategory = 'RIDE' | 'HOTEL' | 'DRIVER_BEHAVIOR' | 'APP_ISSUE' | 'OTHERS';
 
 export interface Complaint {
   id: number;
   guestName: string;
   guestPhone: string;
+  category: ComplaintCategory;
   message: string;
   status: ComplaintStatus;
   createdAt: string;

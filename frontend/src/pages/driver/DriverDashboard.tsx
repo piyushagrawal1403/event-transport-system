@@ -11,6 +11,7 @@ import {
   type Cab, type RideRequest
 } from '../../api/client';
 import { clearAuthSession, getDriverPhone } from '../../lib/auth';
+import { parseSupportContacts } from '../../lib/supportContacts';
 import { useDriverPush } from './hooks/useDriverPush';
 import ActiveRideCard from './components/ActiveRideCard';
 import RideHistoryPanel from './components/RideHistoryPanel';
@@ -45,11 +46,12 @@ export default function DriverDashboard() {
   // Admin contact
   const [adminPhone, setAdminPhone] = useState('');
   const [adminName, setAdminName] = useState('');
+  const supportContacts = parseSupportContacts(adminName, adminPhone);
 
   useEffect(() => {
     getConfig().then(r => {
-      setAdminPhone(r.data.adminPhone);
-      setAdminName(r.data.adminName);
+      setAdminPhone(r.data.adminPhone || '');
+      setAdminName(r.data.adminName || '');
     }).catch(() => {});
   }, []);
 
@@ -375,17 +377,27 @@ export default function DriverDashboard() {
                 <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">License Plate</p><p className="font-mono font-bold text-gray-800">{myCab.licensePlate}</p></div>
                 <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Capacity</p><p className="font-bold text-gray-800">{myCab.capacity} seats</p></div>
               </div>
-              {adminPhone && (
-                <div className="bg-white rounded-xl shadow-sm px-4 py-3 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Support Helpline</p>
-                    <p className="text-sm font-semibold text-gray-800 truncate">{adminName || 'Event Admin'}</p>
-                  </div>
-                  <a href={`tel:${adminPhone}`} className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg transition flex-shrink-0">
-                    <Phone className="w-4 h-4" />{adminPhone}
-                  </a>
+              <div className="bg-white rounded-xl shadow-sm px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Support Helpline</p>
+                  <p className="text-sm font-semibold text-gray-800 truncate">Support Contacts</p>
                 </div>
-              )}
+                {supportContacts.length > 0 ? (
+                  <div className="flex flex-col gap-2 items-end">
+                    {supportContacts.map((contact, index) => (
+                      <a key={`${contact.phone}-${index}`} href={`tel:${contact.phone}`} className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-lg transition flex-shrink-0">
+                        <Phone className="w-4 h-4" />
+                        <span className="text-left">
+                          <span className="block text-xs text-blue-600/80">{contact.name}</span>
+                          <span className="block">{contact.phone}</span>
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">Not configured</p>
+                )}
+              </div>
             </div>
 
             {/* Active trips */}

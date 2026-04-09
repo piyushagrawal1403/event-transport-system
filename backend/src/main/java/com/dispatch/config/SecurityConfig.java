@@ -47,6 +47,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/events/**", "/api/v1/locations", "/api/v1/config").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/notifications", "/api/v1/push/vapid-public-key").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/rides", "/api/v1/complaints").hasRole("GUEST")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/complaints/mine").hasRole("GUEST")
                         .requestMatchers(HttpMethod.GET, "/api/v1/rides/guest").hasAnyRole("GUEST", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/push/subscribe", "/api/v1/push/unsubscribe").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/push/admin/subscriptions").hasRole("ADMIN")

@@ -147,6 +147,14 @@ export interface EventItinerary {
   location: Location;
 }
 
+export interface MasterDataSnapshot {
+  source: 'DATABASE' | 'CACHE' | 'EXTERNAL_CACHE' | string;
+  cachedAt: string;
+  cabs: Cab[];
+  locations: Location[];
+  events: EventItinerary[];
+}
+
 // === Complaint Types ===
 
 export type ComplaintStatus = 'OPEN' | 'CLOSED';

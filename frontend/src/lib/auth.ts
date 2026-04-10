@@ -29,7 +29,7 @@ const getLegacyAwareValue = (key: (typeof LEGACY_ROLE_KEYS)[number]): string => 
     return '';
   }
 
-  return window.sessionStorage.getItem(key) ?? window.localStorage.getItem(key) ?? '';
+  return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key) ?? '';
 };
 
 export const getAuthSession = (): AuthSession | null => {
@@ -37,25 +37,25 @@ export const getAuthSession = (): AuthSession | null => {
     return null;
   }
 
-  const raw = window.sessionStorage.getItem(AUTH_STORAGE_KEY);
+  const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
   if (raw) {
     const parsed = parseSession(raw);
     if (parsed) {
       return parsed;
     }
-    window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
   }
 
-  const legacyRaw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+  const legacyRaw = window.sessionStorage.getItem(AUTH_STORAGE_KEY);
   if (legacyRaw) {
     const parsedLegacy = parseSession(legacyRaw);
     if (parsedLegacy) {
-      // One-time migration from older app versions that used localStorage.
-      window.sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsedLegacy));
-      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      // One-time migration from older app versions that used sessionStorage.
+      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsedLegacy));
+      window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
       return parsedLegacy;
     }
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
   }
 
   return null;
@@ -81,16 +81,16 @@ export const saveAuthSession = (session: AuthSession): void => {
   }
 
   clearLegacyRoleState();
-  window.sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
 
   if (session.user.role === 'GUEST') {
-    window.sessionStorage.setItem('guestName', session.user.name);
-    window.sessionStorage.setItem('guestPhone', session.user.phone);
+    window.localStorage.setItem('guestName', session.user.name);
+    window.localStorage.setItem('guestPhone', session.user.phone);
   }
 
   if (session.user.role === 'DRIVER') {
-    window.sessionStorage.setItem('driverPhone', session.user.phone);
+    window.localStorage.setItem('driverPhone', session.user.phone);
   }
 };
 
@@ -99,8 +99,8 @@ export const clearAuthSession = (): void => {
     return;
   }
 
-  window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
   window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
   clearLegacyRoleState();
 };
 

@@ -219,8 +219,8 @@ export default function LoginPage() {
           <div className="wedding-icon-tile mb-4">
             <Car className="w-8 h-8" style={{ color: 'var(--w-accent-strong)' }} />
           </div>
-          <h1 className="text-4xl font-bold" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif", letterSpacing: '0.02em' }}>Event Transport</h1>
-          <p className="mt-2" style={{ color: 'var(--w-muted)' }}>Get a ride to and from the venue</p>
+          <h1 className="text-4xl font-bold" style={{ color: 'var(--w-text)', fontFamily: "'Playfair Display', serif", letterSpacing: '0.02em' }}>Event Management</h1>
+          <p className="mt-2" style={{ color: 'var(--w-muted)' }}>Bidi No. 72 Family Welcomes you</p>
         </div>
 
         <div className="wedding-shell rounded-2xl p-6 space-y-4">

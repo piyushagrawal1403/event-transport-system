@@ -2,6 +2,8 @@ package com.dispatch;
 
 import com.dispatch.model.User;
 import com.dispatch.model.UserRole;
+import com.dispatch.model.Location;
+import com.dispatch.repository.LocationRepository;
 import com.dispatch.service.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,23 +22,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("seed")
 @Transactional
 class SecurityRbacTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private JwtService jwtService;
     @Autowired private ObjectMapper objectMapper;
+    @Autowired private LocationRepository locationRepository;
 
     private String guestToken;
     private String driverToken;
     private String adminToken;
+    private Long locationId;
 
     @BeforeEach
     void setUp() {
         guestToken = tokenFor("Test Guest", "9100000001", UserRole.GUEST);
         driverToken = tokenFor("Test Driver", "9100000002", UserRole.DRIVER);
         adminToken = tokenFor("Test Admin", "9100000003", UserRole.ADMIN);
+        Location location = locationRepository.save(new Location("RBAC Test Hotel", false, 3.0));
+        locationId = location.getId();
     }
 
     private String tokenFor(String name, String phone, UserRole role) {
@@ -53,28 +57,28 @@ class SecurityRbacTest {
     @Test void rides_post_noToken_401() throws Exception {
         mockMvc.perform(post("/api/v1/rides")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"guestName\":\"A\",\"guestPhone\":\"9100000001\",\"passengerCount\":1,\"direction\":\"TO_VENUE\",\"locationId\":1}"))
+                .content("{\"guestName\":\"A\",\"guestPhone\":\"9100000001\",\"passengerCount\":1,\"direction\":\"TO_VENUE\",\"locationId\":" + locationId + "}"))
                 .andExpect(status().isUnauthorized());
     }
     @Test void rides_post_guest_allowed() throws Exception {
         mockMvc.perform(post("/api/v1/rides")
                 .header("Authorization", "Bearer " + guestToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"guestName\":\"A\",\"guestPhone\":\"9100000001\",\"passengerCount\":1,\"direction\":\"TO_VENUE\",\"locationId\":1}"))
+                .content("{\"guestName\":\"A\",\"guestPhone\":\"9100000001\",\"passengerCount\":1,\"direction\":\"TO_VENUE\",\"locationId\":" + locationId + "}"))
                 .andExpect(status().isOk());
     }
     @Test void rides_post_driver_forbidden() throws Exception {
         mockMvc.perform(post("/api/v1/rides")
                 .header("Authorization", "Bearer " + driverToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"guestName\":\"A\",\"guestPhone\":\"9100000001\",\"passengerCount\":1,\"direction\":\"TO_VENUE\",\"locationId\":1}"))
+                .content("{\"guestName\":\"A\",\"guestPhone\":\"9100000001\",\"passengerCount\":1,\"direction\":\"TO_VENUE\",\"locationId\":" + locationId + "}"))
                 .andExpect(status().isForbidden());
     }
     @Test void rides_post_admin_forbidden() throws Exception {
         mockMvc.perform(post("/api/v1/rides")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"guestName\":\"A\",\"guestPhone\":\"9100000001\",\"passengerCount\":1,\"direction\":\"TO_VENUE\",\"locationId\":1}"))
+                .content("{\"guestName\":\"A\",\"guestPhone\":\"9100000001\",\"passengerCount\":1,\"direction\":\"TO_VENUE\",\"locationId\":" + locationId + "}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -200,21 +204,21 @@ class SecurityRbacTest {
     @Test void events_post_noToken_401() throws Exception {
         mockMvc.perform(post("/api/v1/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"T\",\"startTime\":\"2026-04-01T10:00:00\",\"endTime\":\"2026-04-01T11:00:00\",\"locationId\":1}"))
+                .content("{\"title\":\"T\",\"startTime\":\"2026-04-01T10:00:00\",\"endTime\":\"2026-04-01T11:00:00\",\"locationId\":" + locationId + "}"))
                 .andExpect(status().isUnauthorized());
     }
     @Test void events_post_guest_forbidden() throws Exception {
         mockMvc.perform(post("/api/v1/events")
                 .header("Authorization", "Bearer " + guestToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"T\",\"startTime\":\"2026-04-01T10:00:00\",\"endTime\":\"2026-04-01T11:00:00\",\"locationId\":1}"))
+                .content("{\"title\":\"T\",\"startTime\":\"2026-04-01T10:00:00\",\"endTime\":\"2026-04-01T11:00:00\",\"locationId\":" + locationId + "}"))
                 .andExpect(status().isForbidden());
     }
     @Test void events_post_admin_allowed() throws Exception {
         mockMvc.perform(post("/api/v1/events")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"T\",\"startTime\":\"2026-04-01T10:00:00\",\"endTime\":\"2026-04-01T11:00:00\",\"locationId\":1}"))
+                .content("{\"title\":\"T\",\"startTime\":\"2026-04-01T10:00:00\",\"endTime\":\"2026-04-01T11:00:00\",\"locationId\":" + locationId + "}"))
                 .andExpect(status().isOk());
     }
 

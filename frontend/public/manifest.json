@@ -1,6 +1,6 @@
 {
   "name": "Event Transport",
-  "short_name": "Transport",
+  "short_name": "Event",
   "description": "Event Transport Dispatch System - Request rides to and from the venue",
   "start_url": "/",
   "display": "standalone",

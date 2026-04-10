@@ -1,19 +1,21 @@
 package com.dispatch;
 
 import com.dispatch.model.Location;
+import com.dispatch.model.Cab;
 import com.dispatch.model.User;
 import com.dispatch.model.UserRole;
+import com.dispatch.repository.CabRepository;
 import com.dispatch.repository.LocationRepository;
 import com.dispatch.repository.UserRepository;
 import com.dispatch.service.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +34,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.auth.admin.name=Test Admin"
 })
 @AutoConfigureMockMvc
-@ActiveProfiles("seed")
 @Transactional
 class PhaseEAuthIntegrationTest {
 
@@ -51,8 +52,23 @@ class PhaseEAuthIntegrationTest {
     @Autowired
     private LocationRepository locationRepository;
 
+    @Autowired
+    private CabRepository cabRepository;
+
     @MockBean
     private com.dispatch.service.RecaptchaService recaptchaService;
+
+    private static final String TEST_DRIVER_PHONE = "9876510001";
+    private Long locationId;
+
+    @BeforeEach
+    void setUpFixtures() {
+        Location hotel = new Location("PhaseE Hotel", false, 4.2);
+        locationId = locationRepository.save(hotel).getId();
+
+        Cab cab = new Cab("KA-TEST-1001", "PhaseE Driver", TEST_DRIVER_PHONE, 4);
+        cabRepository.save(cab);
+    }
 
     @Test
     void driverLogin_withRecaptcha_returnsJwtBackedSession() throws Exception {
@@ -61,13 +77,13 @@ class PhaseEAuthIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/driver-login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "phone", "9876510001",
+                                "phone", TEST_DRIVER_PHONE,
                                 "recaptchaToken", "integration-test-token"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isString())
                 .andExpect(jsonPath("$.user.role").value("DRIVER"))
-                .andExpect(jsonPath("$.user.phone").value("9876510001"));
+                .andExpect(jsonPath("$.user.phone").value(TEST_DRIVER_PHONE));
     }
 
     @Test
@@ -86,11 +102,6 @@ class PhaseEAuthIntegrationTest {
 
     @Test
     void createRide_rejectsPassengerCountAboveFour() throws Exception {
-        Location location = locationRepository.findAll().stream()
-                .filter(loc -> !Boolean.TRUE.equals(loc.getIsMainVenue()))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No seeded hotel location found"));
-
         User guest = new User();
         guest.setName("Validation Guest");
         guest.setPhone("9999999999");
@@ -105,7 +116,7 @@ class PhaseEAuthIntegrationTest {
                                 "guestPhone", "9999999999",
                                 "passengerCount", 5,
                                 "direction", "TO_VENUE",
-                                "locationId", location.getId()
+                                "locationId", locationId
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Validation failed"))

@@ -24,6 +24,7 @@ describe("auth helpers", () => {
   it("getToken_returnsStoredToken", () => {
     saveAuthSession(mockSession);
     expect(getAuthToken()).toBe("test-jwt-token");
+    expect(localStorage.getItem("authSession")).toBeTruthy();
   });
 
   it("getToken_returnsNullWhenAbsent", () => {
@@ -35,6 +36,15 @@ describe("auth helpers", () => {
     clearAuthSession();
     expect(getAuthToken()).toBeNull();
     expect(getAuthSession()).toBeNull();
+    expect(localStorage.getItem("authSession")).toBeNull();
+    expect(sessionStorage.getItem("authSession")).toBeNull();
+  });
+
+  it("getAuthSession_migratesLegacySessionStorage", () => {
+    sessionStorage.setItem("authSession", JSON.stringify(mockSession));
+    expect(getAuthSession()?.token).toBe("test-jwt-token");
+    expect(localStorage.getItem("authSession")).toBeTruthy();
+    expect(sessionStorage.getItem("authSession")).toBeNull();
   });
 
   it("isAuthenticated_trueWhenTokenPresent", () => {

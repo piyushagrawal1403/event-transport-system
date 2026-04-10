@@ -16,6 +16,7 @@ export {
   updateCabStatus, getCabAnalytics,
   createCab, updateCab, deleteCab,
   createLocation, updateLocation, deleteLocation,
+  getMasterDataSnapshot, refreshMasterDataSnapshot,
 } from './rides';
 
 // Events & Notifications
@@ -39,7 +40,7 @@ export type {
   RideRequest, RideRequestPayload, RideStatus,
   Cab, Location, AssignPayload, RideIncidentType, CancelledQueueEntry,
   DriverAnalytics, TopDriver, AdminDailyReport,
-  EventItinerary,
+  EventItinerary, MasterDataSnapshot,
   ComplaintStatus, ComplaintCategory, Complaint,
   AppNotification,
   PushSubscriptionPayload, PushSubscriptionEntry,

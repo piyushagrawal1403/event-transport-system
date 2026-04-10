@@ -4,6 +4,7 @@ import { Car, Phone, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, Log
 import {
   createRide,
   getLocations,
+  getMasterDataSnapshot,
   getGuestRides,
   getConfig,
   createComplaint,
@@ -60,7 +61,17 @@ export default function GuestHome() {
       setLocations(res.data);
       const hotels = res.data.filter(l => !l.isMainVenue);
       if (hotels.length > 0) setSelectedLocationId(hotels[0].id);
-    }).catch(() => setError('Failed to load locations'));
+    }).catch(async () => {
+      try {
+        const snapshot = await getMasterDataSnapshot();
+        const fallbackLocations = snapshot.data.locations ?? [];
+        setLocations(fallbackLocations);
+        const hotels = fallbackLocations.filter(l => !l.isMainVenue);
+        if (hotels.length > 0) setSelectedLocationId(hotels[0].id);
+      } catch {
+        setError('Failed to load locations');
+      }
+    });
   }, [guestName, guestPhone, navigate]);
 
   useEffect(() => {

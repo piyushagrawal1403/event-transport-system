@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   getPendingRides, getCabs, getOngoingRides, getEvents, getLocations,
-  getCancelledRides, getComplaints, getConfig,
+  getCancelledRides, getComplaints, getConfig, getMasterDataSnapshot,
   isUnauthorizedError,
   type Cab, type RideRequest, type EventItinerary, type Location,
   type Complaint, type CancelledQueueEntry, type RideIncidentType, type ComplaintStatus
@@ -78,6 +78,10 @@ export function useAdminPolling(
         return;
       }
       if (cabsRes.status === 'fulfilled') setCabs(cabsRes.value.data);
+      if (cabsRes.status === 'rejected') {
+        const snapshot = await getMasterDataSnapshot();
+        setCabs(snapshot.data.cabs ?? []);
+      }
       if (ongoingRes.status === 'fulfilled') setOngoingRides(ongoingRes.value.data);
       if (cancelledRes.status === 'fulfilled') setCancelledRides(cancelledRes.value.data);
       if (complaintsRes.status === 'fulfilled') setComplaints(complaintsRes.value.data);
@@ -136,6 +140,11 @@ export function useAdminPolling(
       const [evRes, locRes] = await Promise.allSettled([getEvents(), getLocations()]);
       if (evRes.status === 'fulfilled') setEvents(evRes.value.data);
       if (locRes.status === 'fulfilled') setLocations(locRes.value.data);
+      if (evRes.status === 'rejected' || locRes.status === 'rejected') {
+        const snapshot = await getMasterDataSnapshot();
+        setEvents(snapshot.data.events ?? []);
+        setLocations(snapshot.data.locations ?? []);
+      }
     } catch {
       // Retry on next refresh
     }

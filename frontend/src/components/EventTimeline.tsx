@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getEvents, type EventItinerary } from '../api/client';
+import { getEvents, getMasterDataSnapshot, type EventItinerary } from '../api/client';
 const formatTime = (iso: string) => {
   const d = new Date(iso);
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -14,7 +14,18 @@ export default function EventTimeline() {
   const [events, setEvents] = useState<EventItinerary[]>([]);
   const navigate = useNavigate();
   useEffect(() => {
-    const fetch = () => { getEvents().then(r => setEvents(r.data)).catch(() => {}); };
+    const fetch = () => {
+      getEvents()
+        .then(r => setEvents(r.data))
+        .catch(async () => {
+          try {
+            const snapshot = await getMasterDataSnapshot();
+            setEvents(snapshot.data.events ?? []);
+          } catch {
+            // Keep old events in UI on transient failures.
+          }
+        });
+    };
     fetch();
     const interval = setInterval(fetch, 30000);
     return () => clearInterval(interval);

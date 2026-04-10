@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Users, ArrowRight, Building2, PartyPopper, Minus, Plus, LogOut, PenLine } from 'lucide-react';
-import { createRide, getLocations, getGuestRides, type Location } from '../../api/client';
+import { createRide, getLocations, getGuestRides, getMasterDataSnapshot, type Location } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
 import NotificationBanner from '../../components/NotificationBanner';
 import { clearAuthSession, getGuestIdentity } from '../../lib/auth';
@@ -36,7 +36,17 @@ export default function RequestRide() {
       // Default to first non-venue, non-Others location
       const hotels = res.data.filter(l => !l.isMainVenue && l.name !== 'Others');
       if (hotels.length > 0) setSelectedLocationId(hotels[0].id);
-    }).catch(() => setError('Failed to load locations'));
+    }).catch(async () => {
+      try {
+        const snapshot = await getMasterDataSnapshot();
+        const fallbackLocations = snapshot.data.locations ?? [];
+        setLocations(fallbackLocations);
+        const hotels = fallbackLocations.filter(l => !l.isMainVenue && l.name !== 'Others');
+        if (hotels.length > 0) setSelectedLocationId(hotels[0].id);
+      } catch {
+        setError('Failed to load locations');
+      }
+    });
   }, [guestName, guestPhone, navigate]);
 
   const hotels = locations.filter(l => !l.isMainVenue);

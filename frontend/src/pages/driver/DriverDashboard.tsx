@@ -7,7 +7,7 @@ import {
 import {
   getCabs, getCabActiveRides, getCabCompletedRides, updateCabStatus,
   acceptRide, denyRide, markArrived, startTrip, completeTrip, getConfig,
-  isUnauthorizedError,
+  isUnauthorizedError, getMasterDataSnapshot,
   type Cab, type RideRequest
 } from '../../api/client';
 import { clearAuthSession, getDriverPhone } from '../../lib/auth';
@@ -65,7 +65,17 @@ export default function DriverDashboard() {
 
     const fetchCabs = async () => {
       try {
-        const { data: cabs } = await getCabs();
+        let cabs: Cab[] = [];
+        try {
+          const cabsRes = await getCabs();
+          cabs = cabsRes.data;
+        } catch (error) {
+          if (isUnauthorizedError(error)) {
+            throw error;
+          }
+          const snapshotRes = await getMasterDataSnapshot();
+          cabs = snapshotRes.data.cabs ?? [];
+        }
         setUnauthorized(false);
         const sanitizedInput = sanitizePhone(phone);
         const found = cabs.find(c => sanitizePhone(c.driverPhone) === sanitizedInput);
@@ -235,8 +245,7 @@ export default function DriverDashboard() {
 
   // ── Accept / Deny consent modal ───────────────────────────────────────────
 
-  const ConsentModal = () => {
-    if (!consentRide) return null;
+  const consentModal = consentRide ? (() => {
     const batch = activeTrips.filter(r => r.magicLinkId === consentRide.magicLinkId);
     const totalPax = batch.reduce((s, r) => s + r.passengerCount, 0);
 
@@ -289,13 +298,11 @@ export default function DriverDashboard() {
         </div>
       </div>
     );
-  };
+  })() : null;
 
   // ── OTP entry modal ──────────────────────────────────────────
 
-  const OtpModal = () => {
-    if (otpRideId === null) return null;
-    return (
+  const otpModal = otpRideId !== null ? (
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
           <div className="text-center">
@@ -305,7 +312,21 @@ export default function DriverDashboard() {
             <h2 className="text-xl font-bold text-gray-900">Enter Guest OTP</h2>
             <p className="text-sm text-gray-500 mt-1">Ask the guest for their 4-digit code to start the trip</p>
           </div>
-          <input type="text" inputMode="numeric" maxLength={4} value={otpInput} onChange={e => { setOtpInput(e.target.value); setOtpError(''); }} placeholder="- - - -" className="w-full text-center text-3xl font-mono font-bold tracking-widest py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="one-time-code"
+            maxLength={4}
+            value={otpInput}
+            onChange={e => {
+              const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+              setOtpInput(digits);
+              setOtpError('');
+            }}
+            placeholder="- - - -"
+            className="w-full text-center text-3xl font-mono font-bold tracking-widest py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          />
           {otpError && <p className="text-red-600 text-sm text-center">{otpError}</p>}
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => { setOtpRideId(null); setOtpInput(''); setOtpError(''); }} className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition">Cancel</button>
@@ -315,13 +336,12 @@ export default function DriverDashboard() {
           </div>
         </div>
       </div>
-    );
-  };
+    ) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <ConsentModal />
-      <OtpModal />
+      {consentModal}
+      {otpModal}
 
       {/* Header */}
       <div className="bg-indigo-600 text-white px-4 py-4">

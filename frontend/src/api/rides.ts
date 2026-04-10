@@ -1,7 +1,7 @@
 import api from './http';
 import type {
   RideRequestPayload, RideRequest, Cab, Location, AssignPayload,
-  RideIncidentType, CancelledQueueEntry, DriverAnalytics,
+  RideIncidentType, CancelledQueueEntry, DriverAnalytics, MasterDataSnapshot,
 } from './types';
 
 // === Ride Endpoints ===
@@ -105,4 +105,10 @@ export const updateLocation = (id: number, payload: { name?: string; isMainVenue
 
 export const deleteLocation = (id: number) =>
     api.delete<{ message: string }>(`/api/v1/locations/${id}`);
+
+export const getMasterDataSnapshot = () =>
+    api.get<MasterDataSnapshot>('/api/v1/bootstrap/master-data');
+
+export const refreshMasterDataSnapshot = () =>
+    api.post<MasterDataSnapshot>('/api/v1/bootstrap/master-data/refresh');
 

@@ -13,14 +13,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 
-@Component
-@Profile("seed")
+@Profile("seed & !prod")
 public class DataSeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
@@ -45,6 +43,7 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        log.info("action=seeder_start");
         // Seed admin settings with defaults if not already set
         settingRepository.findById("admin.phone")
                 .orElseGet(() -> settingRepository.save(new AppSetting("admin.phone", "+91-9900000000")));
@@ -52,8 +51,11 @@ public class DataSeeder implements CommandLineRunner {
                 .orElseGet(() -> settingRepository.save(new AppSetting("admin.name", "Event Admin")));
 
         if (locationRepository.count() > 0) {
+            log.info("action=seeder_skip reason=data_exists count={}", locationRepository.count());
             return; // Locations/cabs/events already seeded
         }
+
+        log.info("action=seeder_populating");
 
         // Main venue
         locationRepository.save(new Location("Grand Event Center", true, 0.0));

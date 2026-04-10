@@ -9,6 +9,7 @@ import RequestRide from './pages/guest/RequestRide';
 import RideStatus from './pages/guest/RideStatus';
 import ProtectedRoute from './components/ProtectedRoute';
 import ServiceWorkerUpdateBanner from './components/ServiceWorkerUpdateBanner';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
 import { getAuthSession, getHomeRouteForRole } from './lib/auth';
 import { activateServiceWorkerUpdate, subscribeToServiceWorkerUpdates } from './lib/serviceWorker';
 
@@ -62,6 +63,8 @@ function App() {
         onRefresh={handleRefreshApp}
         onDismiss={() => setDismissedWorkerScriptUrl(waitingWorkerScriptUrl)}
       />
+
+      <PwaInstallPrompt />
     </>
   );
 }

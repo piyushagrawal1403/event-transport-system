@@ -23,7 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,7 +40,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("seed")
 @Transactional
 class PhaseDIntegrationTest {
 
@@ -91,9 +89,7 @@ class PhaseDIntegrationTest {
 
     @Test
     void cancelledQueuePersistence_keepsIncidentAfterRideCancellation() {
-        Location location = locationRepository.findAll().stream()
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No location seeded"));
+        Location location = locationRepository.save(new Location("PhaseD Cancel Hotel", false, 2.5));
 
         RideRequest ride = new RideRequest();
         ride.setGuestName("Cancel Guest");
@@ -115,9 +111,7 @@ class PhaseDIntegrationTest {
 
     @Test
     void driverAnalyticsCalculation_returnsTotalKmAndAverageAcceptanceTime() throws Exception {
-        Location location = locationRepository.findAll().stream()
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No location seeded"));
+        Location location = locationRepository.save(new Location("PhaseD Analytics Hotel", false, 5.0));
 
         Cab cab = new Cab("TEST-" + UUID.randomUUID().toString().substring(0, 8), "Analytics Driver", "9000012345", 4);
         cab.setTotalKm(25.5);

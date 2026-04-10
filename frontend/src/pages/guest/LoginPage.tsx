@@ -213,7 +213,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="wedding-app-bg flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="wedding-app-bg flex items-start justify-center p-4 pt-8 pb-24 relative overflow-y-auto">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="wedding-icon-tile mb-4">
@@ -242,9 +242,12 @@ export default function LoginPage() {
               <div>
                 <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif", letterSpacing: '0.05em' }}>Admin Username</label>
                 <div className="relative">
-                  <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
+                    <ShieldCheck className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
                   <input
                     type="text"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Enter admin username"
@@ -257,9 +260,12 @@ export default function LoginPage() {
               <div>
                 <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif", letterSpacing: '0.05em' }}>Password</label>
                 <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
                   <input
                     type="password"
+                      autoComplete="current-password"
+                      autoCapitalize="none"
+                      autoCorrect="off"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter admin password"
@@ -282,9 +288,10 @@ export default function LoginPage() {
                 <div>
                   <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif", letterSpacing: '0.05em' }}>Your Name</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
+                    <User className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
                     <input
                       type="text"
+                      autoComplete="name"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Enter your full name"
@@ -298,9 +305,12 @@ export default function LoginPage() {
               <div>
                 <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--w-muted)', fontFamily: "'Cinzel', serif", letterSpacing: '0.05em' }}>Phone Number</label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
+                  <Phone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--w-muted)' }} />
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    enterKeyHint="done"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="9876543210"

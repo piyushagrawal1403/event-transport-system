@@ -95,6 +95,16 @@ function observeRegistration(registration: ServiceWorkerRegistration) {
 
 let globalListenersBound = false;
 
+function hasFocusedEditableElement(): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tag = active.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || active.isContentEditable;
+}
+
 function bindGlobalListeners() {
   if (globalListenersBound || !('serviceWorker' in navigator)) {
     return;
@@ -112,6 +122,9 @@ function bindGlobalListeners() {
   });
 
   window.addEventListener('focus', () => {
+    if (hasFocusedEditableElement()) {
+      return;
+    }
     void refreshServiceWorker();
   });
 

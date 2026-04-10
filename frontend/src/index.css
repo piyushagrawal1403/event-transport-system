@@ -65,7 +65,8 @@
 
 @layer components {
   .wedding-app-bg {
-    @apply min-h-screen;
+    min-height: 100dvh;
+    min-height: 100svh;
     background: var(--w-bg);
   }
 

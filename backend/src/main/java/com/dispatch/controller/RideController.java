@@ -10,6 +10,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -112,14 +114,28 @@ public class RideController {
     // ── Cancel ────────────────────────────────────────────────────────────────
 
     @DeleteMapping("/{rideId}")
-    public ResponseEntity<?> cancelRide(@PathVariable Long rideId) {
+    public ResponseEntity<?> cancelRide(@PathVariable Long rideId, Authentication authentication) {
         try {
-            RideRequest cancelled = rideService.cancelRide(rideId);
+            RideRequest cancelled = rideService.cancelRide(rideId, resolveRole(authentication));
             return ResponseEntity.ok(cancelled);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private String resolveRole(Authentication authentication) {
+        if (authentication == null || authentication.getAuthorities() == null) {
+            return "";
+        }
+
+        for (GrantedAuthority authority : authentication.getAuthorities()) {
+            String name = authority.getAuthority();
+            if (name != null && name.startsWith("ROLE_")) {
+                return name.substring("ROLE_".length());
+            }
+        }
+        return "";
     }
 }

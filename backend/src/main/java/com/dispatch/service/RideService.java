@@ -122,8 +122,16 @@ public class RideService {
 
     @Transactional
     public RideRequest cancelRide(Long rideId) {
+        return cancelRide(rideId, "GUEST");
+    }
+
+    @Transactional
+    public RideRequest cancelRide(Long rideId, String cancelledByRole) {
         RideRequest ride = rideRequestRepository.findById(rideId)
                 .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
+
+        String actorRole = cancelledByRole == null ? "" : cancelledByRole.trim().toUpperCase();
+        boolean cancelledByAdmin = "ADMIN".equals(actorRole);
 
         if (ride.getStatus() == RideStatus.COMPLETED) {
             throw new IllegalStateException("Cannot cancel a completed ride");
@@ -161,23 +169,36 @@ public class RideService {
 
         ride.setStatus(RideStatus.CANCELLED);
 
-        // Notify admin about any guest cancellation so the queue/ops team stays updated
-        pushNotificationService.sendPushToAdmins("Guest Cancelled Ride",
-                String.format("Guest %s cancelled ride #%d", ride.getGuestName(), rideId));
+        if (cancelledByAdmin) {
+            pushNotificationService.sendPushToGuest(
+                    ride.getGuestPhone(),
+                    "Ride Cancelled by Admin",
+                    String.format("Your ride request #%d was cancelled by admin.", rideId)
+            );
+        } else {
+            // Notify admins when a guest cancels so operations can track churn.
+            pushNotificationService.sendPushToAdmins("Guest Cancelled Ride",
+                    String.format("Guest %s cancelled ride #%d", ride.getGuestName(), rideId));
+        }
 
         // Notify driver only if this ride had already been dispatched to a cab
         if (wasDispatched && ride.getCab() != null) {
             String driverPhone = ride.getCab().getDriverPhone();
 
 
-            // Notify driver about guest cancellation
+            String driverTitle = cancelledByAdmin ? "Ride Cancelled by Admin" : "Ride Cancelled by Guest";
+            String driverMessage = cancelledByAdmin
+                    ? String.format("Ride #%d was cancelled by admin. You are now available.", rideId)
+                    : String.format("Ride #%d was cancelled by the guest. You are now available.", rideId);
+
+            // Notify driver about cancellation context.
             if (driverPhone != null) {
-                pushNotificationService.sendPushToDriver(driverPhone, "Ride Cancelled by Guest",
-                        String.format("Ride #%d was cancelled by the guest. You are now available.", rideId));
+                pushNotificationService.sendPushToDriver(driverPhone, driverTitle, driverMessage);
             }
         }
 
-        log.info("action=ride_cancelled rideId={} guest='{}' dispatched={} byRole=ADMIN", rideId, ride.getGuestName(), wasDispatched);
+        log.info("action=ride_cancelled rideId={} guest='{}' dispatched={} byRole={}",
+                rideId, ride.getGuestName(), wasDispatched, actorRole.isBlank() ? "UNKNOWN" : actorRole);
 
         return rideRequestRepository.save(ride);
     }

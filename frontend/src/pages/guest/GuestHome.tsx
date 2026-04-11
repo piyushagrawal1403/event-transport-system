@@ -16,6 +16,7 @@ import {
   type ComplaintCategory,
 } from '../../api/client';
 import EventTimeline from '../../components/EventTimeline';
+import EventCarousel from '../../components/EventCarousel';
 import NotificationBanner from '../../components/NotificationBanner';
 import { clearAuthSession, getGuestIdentity } from '../../lib/auth';
 import { parseSupportContacts } from '../../lib/supportContacts';
@@ -207,6 +208,9 @@ export default function GuestHome() {
 
       <div className="max-w-md mx-auto p-4 space-y-4">
         <p className="text-sm" style={{ color: 'var(--w-muted)' }}>Choose a card to open details.</p>
+
+        {/* Event image carousel — clickable, navigates to event detail */}
+        <EventCarousel />
 
         <div className="grid grid-cols-2 gap-3">
           <button

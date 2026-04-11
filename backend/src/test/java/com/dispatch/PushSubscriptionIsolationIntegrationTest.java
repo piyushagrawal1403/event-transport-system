@@ -19,7 +19,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -127,6 +129,32 @@ class PushSubscriptionIsolationIntegrationTest {
         assertEquals(1, byEndpoint.size());
         assertEquals("GUEST", byEndpoint.get(0).getUserType());
         assertEquals("9000000044", byEndpoint.get(0).getUserPhone());
+    }
+
+    @Test
+    void adminSubscriptions_includesDeliveryDiagnosticsFields() throws Exception {
+        String adminToken = tokenFor("Admin One", "9000000099", UserRole.ADMIN);
+        String endpoint = "https://example.com/push/admin-diagnostics";
+
+        mockMvc.perform(post("/api/v1/push/subscribe")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "endpoint", endpoint,
+                                "keys.p256dh", "admin-p256dh",
+                                "keys.auth", "admin-auth",
+                                "userPhone", "9000000099",
+                                "userType", "ADMIN"
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/push/admin/subscriptions")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subscriptions[0].lastDeliveryAt").hasJsonPath())
+                .andExpect(jsonPath("$.subscriptions[0].lastDeliveryStatus").hasJsonPath())
+                .andExpect(jsonPath("$.subscriptions[0].lastDeliveryHttpStatus").hasJsonPath())
+                .andExpect(jsonPath("$.subscriptions[0].lastDeliveryError").hasJsonPath());
     }
 
     private String tokenFor(String name, String phone, UserRole role) {

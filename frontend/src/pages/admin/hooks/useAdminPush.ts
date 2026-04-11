@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getAdminPushSubscriptions, sendAdminTestPush } from '../../../api/client';
 import { pushNotificationService } from '../../../services/PushNotificationService';
+import type { PushSubscriptionEntry } from '../../../api/client';
 
 export interface AdminPushState {
   adminPushPermission: 'default' | 'granted' | 'denied' | 'unsupported';
   adminPushEnabled: boolean;
   enablingAdminPush: boolean;
-  pushSubCount: { total: number; adminCount: number } | null;
+  pushSubCount: { total: number; adminCount: number; subscriptions: PushSubscriptionEntry[] } | null;
   loadingPushSubCount: boolean;
   sendingTestPush: boolean;
   testPushResult: { success: boolean; message: string } | null;
@@ -23,7 +24,7 @@ export function useAdminPush(adminPhone: string): AdminPushState & AdminPushActi
   const [adminPushPermission, setAdminPushPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
   const [adminPushEnabled, setAdminPushEnabled] = useState(false);
   const [enablingAdminPush, setEnablingAdminPush] = useState(false);
-  const [pushSubCount, setPushSubCount] = useState<{ total: number; adminCount: number } | null>(null);
+  const [pushSubCount, setPushSubCount] = useState<{ total: number; adminCount: number; subscriptions: PushSubscriptionEntry[] } | null>(null);
   const [loadingPushSubCount, setLoadingPushSubCount] = useState(false);
   const [sendingTestPush, setSendingTestPush] = useState(false);
   const [testPushResult, setTestPushResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -116,7 +117,11 @@ export function useAdminPush(adminPhone: string): AdminPushState & AdminPushActi
     setTestPushResult(null);
     try {
       const res = await getAdminPushSubscriptions();
-      setPushSubCount({ total: res.data.total, adminCount: res.data.adminCount });
+      setPushSubCount({
+        total: res.data.total,
+        adminCount: res.data.adminCount,
+        subscriptions: res.data.subscriptions ?? [],
+      });
     } catch {
       setPushSubCount(null);
     } finally {

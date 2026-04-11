@@ -544,6 +544,26 @@ export default function Dashboard() {
                 {pushSubCount !== null && pushSubCount.adminCount === 0 && (
                   <p className="text-xs text-red-300 bg-red-950 border border-red-800 rounded-lg px-2 py-1.5">⚠ No ADMIN subscription in DB. Close this panel, click <strong>"Enable alerts"</strong> in the header, then re-check.</p>
                 )}
+                {pushSubCount !== null && pushSubCount.subscriptions.length > 0 && (
+                  <div className="rounded-lg border border-gray-700 bg-gray-900/40 px-2 py-2 space-y-1.5 max-h-40 overflow-y-auto">
+                    {pushSubCount.subscriptions
+                      .filter((entry) => entry.userType === 'ADMIN')
+                      .slice(0, 6)
+                      .map((entry) => (
+                        <div key={entry.id} className="text-[11px] text-gray-300 leading-snug">
+                          <p className="font-mono text-gray-400">{entry.endpointSuffix}</p>
+                          <p>
+                            status: <span className="font-semibold">{entry.lastDeliveryStatus ?? 'PENDING'}</span>
+                            {entry.lastDeliveryHttpStatus != null ? ` (${entry.lastDeliveryHttpStatus})` : ''}
+                            {entry.lastDeliveryAt ? ` at ${new Date(entry.lastDeliveryAt).toLocaleTimeString()}` : ''}
+                          </p>
+                          {entry.lastDeliveryError && (
+                            <p className="text-red-300">error: {entry.lastDeliveryError}</p>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                )}
                 <button onClick={() => { void handleSendTestPush(); }} disabled={sendingTestPush} className="w-full py-1.5 bg-indigo-700 hover:bg-indigo-600 text-sm rounded-lg transition flex items-center justify-center gap-1.5 disabled:opacity-50" type="button">
                   <Send className="w-3.5 h-3.5" />{sendingTestPush ? 'Sending…' : 'Send test push to admin'}
                 </button>

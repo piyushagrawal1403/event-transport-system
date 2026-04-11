@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.annotation.PostConstruct;
 
 import java.security.GeneralSecurityException;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -149,6 +150,10 @@ public class PushNotificationService {
             m.put("userType", sub.getUserType());
             m.put("userPhone", sub.getUserPhone());
             m.put("subscribedAt", sub.getSubscribedAt() != null ? sub.getSubscribedAt().toString() : null);
+            m.put("lastDeliveryAt", sub.getLastDeliveryAt() != null ? sub.getLastDeliveryAt().toString() : null);
+            m.put("lastDeliveryStatus", sub.getLastDeliveryStatus());
+            m.put("lastDeliveryHttpStatus", sub.getLastDeliveryHttpStatus());
+            m.put("lastDeliveryError", sub.getLastDeliveryError());
             String ep = sub.getEndpoint();
             m.put("endpointSuffix", ep != null && ep.length() > 30 ? "…" + ep.substring(ep.length() - 30) : ep);
             return m;
@@ -211,22 +216,38 @@ public class PushNotificationService {
                 HttpResponse response = pushService.send(notification);
                 int statusCode = response.getStatusLine().getStatusCode();
                 if (statusCode == 201 || statusCode == 200) {
+                    updateDeliveryStatus(sub, "DELIVERED", statusCode, null);
                     logger.info("Push notification delivered to {} (status {})", audience, statusCode);
                 } else if (statusCode == 410 || statusCode == 404) {
+                    updateDeliveryStatus(sub, "EXPIRED", statusCode, "Endpoint expired or not found");
                     logger.warn("Push subscription expired/invalid for {} (status {}), removing", audience, statusCode);
                     pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
                 } else {
+                    updateDeliveryStatus(sub, "UNEXPECTED_STATUS", statusCode, "Unexpected provider status");
                     logger.warn("Push notification to {} returned unexpected status {}", audience, statusCode);
                 }
             } catch (Exception e) {
-                logger.error("Failed to send push notification to {}", audience, e);
-                try {
-                    pushSubscriptionRepository.deleteByEndpoint(sub.getEndpoint());
-                } catch (Exception ex) {
-                    logger.error("Failed to delete subscription", ex);
-                }
+                // Network/provider failures can be transient; do not eagerly delete subscriptions.
+                updateDeliveryStatus(sub, "ERROR", null, describeException(e));
+                logger.error("Failed to send push notification to {} (subscription retained)", audience, e);
             }
         }
+    }
+
+    private void updateDeliveryStatus(PushSubscription subscription, String status, Integer httpStatus, String error) {
+        subscription.setLastDeliveryAt(Instant.now());
+        subscription.setLastDeliveryStatus(status);
+        subscription.setLastDeliveryHttpStatus(httpStatus);
+        subscription.setLastDeliveryError(error);
+        pushSubscriptionRepository.save(subscription);
+    }
+
+    private String describeException(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return exception.getClass().getSimpleName();
+        }
+        return message.length() > 240 ? message.substring(0, 240) : message;
     }
 
     private String normalizeUserPhone(String userPhone, String userType) {

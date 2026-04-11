@@ -8,7 +8,6 @@ import {
 
 export class PushNotificationService {
   private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
-  private lastSubscriptionFingerprint = '';
 
   async initialize(): Promise<void> {
     if (!window.isSecureContext) {
@@ -97,11 +96,6 @@ export class PushNotificationService {
         });
       }
 
-      const fingerprint = `${userType}:${userPhone}:${subscription.endpoint}`;
-      if (this.lastSubscriptionFingerprint === fingerprint) {
-        return true;
-      }
-
       await subscribeToPush({
           endpoint: subscription.endpoint,
           'keys.p256dh': this.arrayBufferToBase64Url(subscription.getKey('p256dh')),
@@ -110,7 +104,6 @@ export class PushNotificationService {
           userType,
       });
 
-      this.lastSubscriptionFingerprint = fingerprint;
       return true;
     } catch (error) {
       console.error('Failed to subscribe to push notifications:', error);
@@ -124,20 +117,17 @@ export class PushNotificationService {
     }
 
     if (!this.serviceWorkerRegistration) {
-      this.lastSubscriptionFingerprint = '';
       return;
     }
 
     try {
       const subscription = await this.serviceWorkerRegistration.pushManager.getSubscription();
       if (!subscription) {
-        this.lastSubscriptionFingerprint = '';
         return;
       }
 
       await unsubscribeFromPush(subscription.endpoint);
       await subscription.unsubscribe();
-      this.lastSubscriptionFingerprint = '';
     } catch (error) {
       console.error('Failed to unsubscribe from push notifications:', error);
     }

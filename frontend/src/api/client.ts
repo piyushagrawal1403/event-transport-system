@@ -20,7 +20,7 @@ export {
 } from './rides';
 
 // Events & Notifications
-export { getEvents, getEventById, uploadEventImage, createEvent, updateEvent, getNotifications } from './events';
+export { getEvents, getEventById, uploadEventImage, createEvent, updateEvent, deleteEvent, getNotifications } from './events';
 
 // Complaints
 export { createComplaint, getComplaints, getMyComplaints, closeComplaint } from './complaints';

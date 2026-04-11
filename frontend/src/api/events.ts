@@ -37,6 +37,9 @@ export const updateEvent = (id: string, payload: {
   notifyGuests?: boolean;
 }) => api.put<EventItinerary>(`/api/v1/events/${id}`, payload);
 
+export const deleteEvent = (id: string) =>
+  api.delete<void>(`/api/v1/events/${id}`);
+
 // === Notification Endpoints ===
 
 export const getNotifications = (since?: string) =>

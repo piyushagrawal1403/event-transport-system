@@ -86,6 +86,13 @@ public class EventService {
         return saved;
     }
 
+    public void deleteEvent(UUID id) {
+        EventItinerary event = eventRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Event not found: " + id));
+        eventRepository.delete(event);
+        log.info("action=event_deleted id={} title='{}'", id, event.getTitle());
+    }
+
     private void notifyGuests(EventItinerary event, boolean isUpdate) {
         String action = isUpdate ? "updated" : "added";
         String message = String.format(

@@ -6,7 +6,7 @@ import {
   Settings, Save, User, X, MessageSquare, LogOut, MoreVertical
 } from 'lucide-react';
 import {
-  assignRides, closeComplaint, createEvent, updateEvent, uploadEventImage,
+  assignRides, closeComplaint, createEvent, updateEvent, deleteEvent, uploadEventImage,
   exportCancelledQueueCsv, exportDriverAnalyticsCsv, exportComplaintsCsv,
   updateConfig,
   type EventItinerary, type Location, type DriverAnalytics,
@@ -431,7 +431,7 @@ export default function Dashboard() {
           <EventManagementPanel
             events={events} locations={locations} showEvents={showEvents} setShowEvents={setShowEvents}
             setShowEventForm={setShowEventForm} setEditingEventId={setEditingEventId} setEventForm={setEventForm}
-            setEventImageFile={setEventImageFile} setEventImageError={setEventImageError}
+            setEventImageFile={setEventImageFile} setEventImageError={setEventImageError} fetchEvents={fetchEvents}
           />
         </div>
       </div>
@@ -583,11 +583,12 @@ export default function Dashboard() {
 
 /* ── Inline sub-components ────────────────────────────────────────────── */
 
-function EventManagementPanel({ events, locations, showEvents, setShowEvents, setShowEventForm, setEditingEventId, setEventForm, setEventImageFile, setEventImageError }: {
+function EventManagementPanel({ events, locations, showEvents, setShowEvents, setShowEventForm, setEditingEventId, setEventForm, setEventImageFile, setEventImageError, fetchEvents }: {
   events: EventItinerary[]; locations: Location[]; showEvents: boolean; setShowEvents: (v: boolean) => void;
   setShowEventForm: (v: boolean) => void; setEditingEventId: (v: string | null) => void;
   setEventForm: React.Dispatch<React.SetStateAction<{ title: string; description: string; imageUrl: string; startTime: string; endTime: string; locationId: string; notifyGuests: boolean }>>;
   setEventImageFile: (v: File | null) => void; setEventImageError: (v: string) => void;
+  fetchEvents: () => Promise<void>;
 }) {
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700">
@@ -605,7 +606,24 @@ function EventManagementPanel({ events, locations, showEvents, setShowEvents, se
                   <p className="font-medium text-gray-200">{ev.title}</p>
                   <p className="text-xs text-gray-400">{new Date(ev.startTime).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })} - {new Date(ev.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</p>
                 </div>
-                <button onClick={() => { setEditingEventId(ev.id); setEventImageFile(null); setEventImageError(''); setEventForm({ title: ev.title, description: ev.description || '', imageUrl: ev.imageUrl || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString(), notifyGuests: false }); setShowEventForm(true); }} className="text-xs text-blue-400 hover:text-blue-300">Edit</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setEditingEventId(ev.id); setEventImageFile(null); setEventImageError(''); setEventForm({ title: ev.title, description: ev.description || '', imageUrl: ev.imageUrl || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString(), notifyGuests: false }); setShowEventForm(true); }} className="text-xs text-blue-400 hover:text-blue-300">Edit</button>
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`Delete event \"${ev.title}\"? This cannot be undone.`)) return;
+                      try {
+                        await deleteEvent(ev.id);
+                        await fetchEvents();
+                      } catch {
+                        alert('Failed to delete event');
+                      }
+                    }}
+                    className="text-xs text-red-400 hover:text-red-300"
+                    type="button"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>

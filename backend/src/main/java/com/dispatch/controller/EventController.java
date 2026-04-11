@@ -46,6 +46,12 @@ public class EventController {
         return ResponseEntity.ok(eventService.updateEvent(id, dto));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteEvent(@PathVariable UUID id) {
+        eventService.deleteEvent(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping(value = "/images", consumes = "multipart/form-data")
     public ResponseEntity<Map<String, String>> uploadEventImage(@RequestParam("file") MultipartFile file) {
         String imageUrl = eventImageStorageService.storeEventImage(file);

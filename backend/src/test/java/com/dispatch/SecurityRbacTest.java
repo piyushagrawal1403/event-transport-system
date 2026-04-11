@@ -233,6 +233,22 @@ class SecurityRbacTest {
                 .andExpect(status().isOk());
     }
 
+    // DELETE /api/v1/events/{id} — ADMIN only
+    @Test void events_delete_noToken_401() throws Exception {
+        mockMvc.perform(delete("/api/v1/events/00000000-0000-0000-0000-000000000001"))
+                .andExpect(status().isUnauthorized());
+    }
+    @Test void events_delete_guest_forbidden() throws Exception {
+        mockMvc.perform(delete("/api/v1/events/00000000-0000-0000-0000-000000000001")
+                .header("Authorization", "Bearer " + guestToken))
+                .andExpect(status().isForbidden());
+    }
+    @Test void events_delete_admin_allowed() throws Exception {
+        mockMvc.perform(delete("/api/v1/events/00000000-0000-0000-0000-000000000001")
+                .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
+    }
+
     // GET /api/v1/config — PUBLIC
     @Test void config_get_noToken_public() throws Exception {
         mockMvc.perform(get("/api/v1/config"))

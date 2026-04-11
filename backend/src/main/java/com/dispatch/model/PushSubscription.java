@@ -30,6 +30,18 @@ public class PushSubscription {
     @Column(nullable = false)
     private Instant subscribedAt;
 
+    @Column
+    private Instant lastDeliveryAt;
+
+    @Column
+    private String lastDeliveryStatus;
+
+    @Column
+    private Integer lastDeliveryHttpStatus;
+
+    @Column(columnDefinition = "TEXT")
+    private String lastDeliveryError;
+
     @PrePersist
     public void prePersist() {
         this.subscribedAt = Instant.now();
@@ -57,5 +69,13 @@ public class PushSubscription {
     public String getUserType() { return userType; }
     public void setUserType(String userType) { this.userType = userType; }
     public Instant getSubscribedAt() { return subscribedAt; }
+    public Instant getLastDeliveryAt() { return lastDeliveryAt; }
+    public void setLastDeliveryAt(Instant lastDeliveryAt) { this.lastDeliveryAt = lastDeliveryAt; }
+    public String getLastDeliveryStatus() { return lastDeliveryStatus; }
+    public void setLastDeliveryStatus(String lastDeliveryStatus) { this.lastDeliveryStatus = lastDeliveryStatus; }
+    public Integer getLastDeliveryHttpStatus() { return lastDeliveryHttpStatus; }
+    public void setLastDeliveryHttpStatus(Integer lastDeliveryHttpStatus) { this.lastDeliveryHttpStatus = lastDeliveryHttpStatus; }
+    public String getLastDeliveryError() { return lastDeliveryError; }
+    public void setLastDeliveryError(String lastDeliveryError) { this.lastDeliveryError = lastDeliveryError; }
 }
 

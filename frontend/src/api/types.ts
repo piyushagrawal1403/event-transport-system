@@ -198,5 +198,9 @@ export interface PushSubscriptionEntry {
   userPhone: string;
   subscribedAt: string | null;
   endpointSuffix: string;
+  lastDeliveryAt: string | null;
+  lastDeliveryStatus: string | null;
+  lastDeliveryHttpStatus: number | null;
+  lastDeliveryError: string | null;
 }
 

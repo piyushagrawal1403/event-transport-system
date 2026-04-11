@@ -63,7 +63,7 @@ describe("useAdminPush", () => {
       await result.current.handleLoadPushSubCount();
     });
 
-    expect(result.current.pushSubCount).toEqual({ total: 3, adminCount: 1 });
+    expect(result.current.pushSubCount).toEqual({ total: 3, adminCount: 1, subscriptions: [] });
     expect(result.current.loadingPushSubCount).toBe(false);
   });
 

@@ -119,5 +119,42 @@ class RideServiceTest {
         assertTrue(result.isEmpty());
         verify(rideRequestRepository).findByStatus(RideStatus.PENDING);
     }
+
+    @Test
+    void cancelRide_byAdmin_notifiesGuestAndNotAdmins() {
+        RideRequest ride = cancellableRide(10L, RideStatus.PENDING, null);
+        when(rideRequestRepository.findById(10L)).thenReturn(Optional.of(ride));
+        when(rideRequestRepository.save(any(RideRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RideRequest result = rideService.cancelRide(10L, "ADMIN");
+
+        assertEquals(RideStatus.CANCELLED, result.getStatus());
+        verify(pushNotificationService).sendPushToGuest(eq("9999999999"), anyString(), contains("#10"));
+        verify(pushNotificationService, never()).sendPushToAdmins(anyString(), anyString());
+    }
+
+    @Test
+    void cancelRide_byGuest_notifiesAdmins() {
+        RideRequest ride = cancellableRide(11L, RideStatus.PENDING, null);
+        when(rideRequestRepository.findById(11L)).thenReturn(Optional.of(ride));
+        when(rideRequestRepository.save(any(RideRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RideRequest result = rideService.cancelRide(11L, "GUEST");
+
+        assertEquals(RideStatus.CANCELLED, result.getStatus());
+        verify(pushNotificationService).sendPushToAdmins(anyString(), contains("#11"));
+        verify(pushNotificationService, never()).sendPushToGuest(anyString(), anyString(), anyString());
+    }
+
+    private RideRequest cancellableRide(Long rideId, RideStatus status, Cab cab) {
+        RideRequest ride = new RideRequest();
+        ride.setId(rideId);
+        ride.setGuestName("Alice");
+        ride.setGuestPhone("9999999999");
+        ride.setPassengerCount(2);
+        ride.setStatus(status);
+        ride.setCab(cab);
+        return ride;
+    }
 }
 

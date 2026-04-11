@@ -610,7 +610,7 @@ function EventManagementPanel({ events, locations, showEvents, setShowEvents, se
                   <button onClick={() => { setEditingEventId(ev.id); setEventImageFile(null); setEventImageError(''); setEventForm({ title: ev.title, description: ev.description || '', imageUrl: ev.imageUrl || '', startTime: ev.startTime.slice(0, 16), endTime: ev.endTime.slice(0, 16), locationId: ev.location.id.toString(), notifyGuests: false }); setShowEventForm(true); }} className="text-xs text-blue-400 hover:text-blue-300">Edit</button>
                   <button
                     onClick={async () => {
-                      if (!window.confirm(`Delete event \"${ev.title}\"? This cannot be undone.`)) return;
+                      if (!window.confirm(`Delete event "${ev.title}"? This cannot be undone.`)) return;
                       try {
                         await deleteEvent(ev.id);
                         await fetchEvents();

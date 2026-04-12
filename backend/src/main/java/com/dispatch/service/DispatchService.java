@@ -43,16 +43,22 @@ public class DispatchService {
      * Batches rides onto a cab and transitions them to OFFERED.
      * The cab is marked BUSY immediately so it cannot be double-assigned.
      * The driver must still accept before the OTP start flow begins.
+     *
+     * Lock order: Cab (PESSIMISTIC_WRITE) → RideRequests (PESSIMISTIC_WRITE).
+     * Consistent ordering across all methods prevents circular-wait deadlocks.
      */
-    @Transactional
+    @Transactional(timeout = 30)
     public Map<String, String> assignRides(AssignRequestDto dto) {
-        Cab cab = cabRepository.findById(dto.getCabId())
+        // 1. Lock Cab first — always the first lock acquired in every method
+        //    that touches both a Cab and RideRequest rows.
+        Cab cab = cabRepository.findByIdWithLock(dto.getCabId())
                 .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + dto.getCabId()));
 
         if (cab.getStatus() != CabStatus.AVAILABLE) {
             throw new IllegalStateException("Cab is not available: " + cab.getLicensePlate());
         }
 
+        // 2. Lock RideRequests after the Cab lock is held.
         List<RideRequest> rides = rideRequestRepository.findAllById(dto.getRideIds());
         if (rides.size() != dto.getRideIds().size()) {
             throw new IllegalArgumentException("Some ride IDs were not found");
@@ -93,7 +99,7 @@ public class DispatchService {
 
         // Send push notification to driver
         if (cab.getDriverPhone() != null) {
-            pushNotificationService.sendPushToDriver(cab.getDriverPhone(), "New Ride Assignment", 
+            pushNotificationService.sendPushToDriver(cab.getDriverPhone(), "New Ride Assignment",
                 String.format("You have been assigned %d ride(s) for pickup. Please check your dashboard.", rides.size()));
         }
 
@@ -130,8 +136,12 @@ public class DispatchService {
      * Driver accepts an offered trip.
      * Transitions all rides in the batch from OFFERED → ACCEPTED and
      * stamps acceptedAt on each ride.
+     *
+     * Lock order: RideRequests only (no Cab mutation here).
+     * Uses findByMagicLinkIdWithLock so the entire batch is locked before
+     * any row is written, preventing partial-update races.
      */
-    @Transactional
+    @Transactional(timeout = 30)
     public List<RideRequest> acceptRide(Long rideId) {
         RideRequest ride = rideRequestRepository.findById(rideId)
                 .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
@@ -140,7 +150,8 @@ public class DispatchService {
             throw new IllegalStateException("Ride " + rideId + " is not in OFFERED status");
         }
 
-        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+        // Lock the full batch before mutating any row.
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
         Instant now = Instant.now();
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.ACCEPTED);
@@ -163,8 +174,10 @@ public class DispatchService {
     /**
      * Driver denies an offered trip.
      * Reverts all rides in the batch to PENDING and frees the cab.
+     *
+     * Lock order: Cab (PESSIMISTIC_WRITE) → RideRequests (PESSIMISTIC_WRITE).
      */
-    @Transactional
+    @Transactional(timeout = 30)
     public List<RideRequest> denyRide(Long rideId) {
         RideRequest ride = rideRequestRepository.findById(rideId)
                 .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
@@ -173,18 +186,23 @@ public class DispatchService {
             throw new IllegalStateException("Ride " + rideId + " is not in OFFERED status");
         }
 
+        // 1. Lock Cab first.
         Cab cab = ride.getCab();
         String driverName = cab != null ? cab.getDriverName() : "Driver";
         String cabPlate = cab != null ? cab.getLicensePlate() : "unknown cab";
         if (cab != null) {
+            cab = cabRepository.findByIdWithLock(cab.getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cab.getId()));
             cab.setStatus(CabStatus.AVAILABLE);
             cab.setTripsDenied((cab.getTripsDenied() == null ? 0 : cab.getTripsDenied()) + 1);
             cabRepository.save(cab);
         }
 
-        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+        // 2. Lock RideRequests after Cab lock is held.
+        final Cab resolvedCab = cab;
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
         for (RideRequest r : batch) {
-            rideIncidentService.recordDriverDeclined(r, cab);
+            rideIncidentService.recordDriverDeclined(r, resolvedCab);
             r.setStatus(RideStatus.PENDING);
             r.setDriverDeniedCount((r.getDriverDeniedCount() == null ? 0 : r.getDriverDeniedCount()) + 1);
             r.setCab(null);
@@ -257,8 +275,10 @@ public class DispatchService {
     /**
      * Completes a trip — no OTP required at drop-off.
      * Frees the cab and increments its trip counter.
+     *
+     * Lock order: Cab (PESSIMISTIC_WRITE) → RideRequests (PESSIMISTIC_WRITE).
      */
-    @Transactional
+    @Transactional(timeout = 30)
     public void completeTrip(Long rideId) {
         RideRequest ride = rideRequestRepository.findById(rideId)
                 .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
@@ -271,8 +291,15 @@ public class DispatchService {
             throw new IllegalStateException("Trip must be IN_TRANSIT or ARRIVED to complete");
         }
 
+        // 1. Lock Cab first.
         Cab cab = ride.getCab();
-        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+        if (cab != null) {
+            cab = cabRepository.findByIdWithLock(cab.getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cab.getId()));
+        }
+
+        // 2. Lock RideRequests after Cab lock is held.
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
 
         double completedBatchDistanceKm = batch.stream()
                 .map(RideRequest::getLocation)
@@ -320,8 +347,10 @@ public class DispatchService {
      * Driver marks the ride batch as arrived at pickup.
      * This transitions the status from ACCEPTED to ARRIVED.
      * Once arrived, the driver can enter the OTP to start the trip.
+     *
+     * Lock order: RideRequests only (no Cab mutation here).
      */
-    @Transactional
+    @Transactional(timeout = 30)
     public void markArrived(Long rideId) {
         RideRequest ride = rideRequestRepository.findById(rideId)
                 .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
@@ -330,7 +359,8 @@ public class DispatchService {
             throw new IllegalStateException("Ride " + rideId + " must be ACCEPTED before marking as arrived");
         }
 
-        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+        // Lock the full batch before mutating any row.
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.ARRIVED);
         }
@@ -347,9 +377,11 @@ public class DispatchService {
 
     /**
      * Cancel an accepted ride and notify the driver.
-     * Reverts all rides in the batch to PENDING and frees the cab.
+     * Reverts all rides in the batch to CANCELLED and frees the cab.
+     *
+     * Lock order: Cab (PESSIMISTIC_WRITE) → RideRequests (PESSIMISTIC_WRITE).
      */
-    @Transactional
+    @Transactional(timeout = 30)
     public void cancelAcceptedRide(Long rideId) {
         RideRequest ride = rideRequestRepository.findById(rideId)
                 .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
@@ -360,13 +392,17 @@ public class DispatchService {
 
         String driverPhone = ride.getCab() != null ? ride.getCab().getDriverPhone() : null;
 
+        // 1. Lock Cab first.
         Cab cab = ride.getCab();
         if (cab != null) {
+            cab = cabRepository.findByIdWithLock(cab.getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cab.getId()));
             cab.setStatus(CabStatus.AVAILABLE);
             cabRepository.save(cab);
         }
 
-        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+        // 2. Lock RideRequests after Cab lock is held.
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.CANCELLED);
             r.setMagicLinkId(null);
@@ -381,7 +417,7 @@ public class DispatchService {
             eventNotificationRepository.save(notification);
 
             // Send push notification
-            pushNotificationService.sendPushToDriver(driverPhone, "Ride Cancelled", 
+            pushNotificationService.sendPushToDriver(driverPhone, "Ride Cancelled",
                 String.format("Ride #%d has been cancelled. You are now available for new assignments", rideId));
         }
     }

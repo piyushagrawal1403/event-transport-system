@@ -58,8 +58,10 @@ public class DispatchService {
             throw new IllegalStateException("Cab is not available: " + cab.getLicensePlate());
         }
 
-        // 2. Lock RideRequests after the Cab lock is held.
-        List<RideRequest> rides = rideRequestRepository.findAllById(dto.getRideIds());
+        // 2. Lock RideRequests in ascending ID order after the Cab lock is held.
+        //    findAllByIdWithLock issues SELECT … FOR UPDATE ORDER BY id ASC,
+        //    preventing lock-ordering races between concurrent assign calls.
+        List<RideRequest> rides = rideRequestRepository.findAllByIdWithLock(dto.getRideIds());
         if (rides.size() != dto.getRideIds().size()) {
             throw new IllegalArgumentException("Some ride IDs were not found");
         }
@@ -152,6 +154,14 @@ public class DispatchService {
 
         // Lock the full batch before mutating any row.
         List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
+
+        // Re-validate after acquiring the lock: guard against concurrent accept calls.
+        RideRequest lockedRide = batch.stream().filter(r -> r.getId().equals(rideId)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Ride " + rideId + " is no longer in an active batch"));
+        if (lockedRide.getStatus() != RideStatus.OFFERED) {
+            throw new IllegalStateException("Ride " + rideId + " status changed concurrently; expected OFFERED, found " + lockedRide.getStatus());
+        }
+
         Instant now = Instant.now();
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.ACCEPTED);
@@ -190,17 +200,30 @@ public class DispatchService {
         Cab cab = ride.getCab();
         String driverName = cab != null ? cab.getDriverName() : "Driver";
         String cabPlate = cab != null ? cab.getLicensePlate() : "unknown cab";
-        if (cab != null) {
-            cab = cabRepository.findByIdWithLock(cab.getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cab.getId()));
-            cab.setStatus(CabStatus.AVAILABLE);
-            cab.setTripsDenied((cab.getTripsDenied() == null ? 0 : cab.getTripsDenied()) + 1);
-            cabRepository.save(cab);
+        Long cabId = cab != null ? cab.getId() : null;
+        if (cabId != null) {
+            cab = cabRepository.findByIdWithLock(cabId)
+                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cabId));
         }
 
-        // 2. Lock RideRequests after Cab lock is held.
+        // 2. Lock RideRequests after Cab lock is held (ORDER BY id ASC).
         final Cab resolvedCab = cab;
         List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
+
+        // 3. Re-validate after acquiring the lock: guard against duplicate deny calls.
+        RideRequest lockedRide = batch.stream().filter(r -> r.getId().equals(rideId)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Ride " + rideId + " is no longer in an active batch"));
+        if (lockedRide.getStatus() != RideStatus.OFFERED) {
+            throw new IllegalStateException("Ride " + rideId + " status changed concurrently; expected OFFERED, found " + lockedRide.getStatus());
+        }
+
+        // 4. Mutate now that both locks are held and status is confirmed.
+        if (resolvedCab != null) {
+            resolvedCab.setStatus(CabStatus.AVAILABLE);
+            resolvedCab.setTripsDenied((resolvedCab.getTripsDenied() == null ? 0 : resolvedCab.getTripsDenied()) + 1);
+            cabRepository.save(resolvedCab);
+        }
+
         for (RideRequest r : batch) {
             rideIncidentService.recordDriverDeclined(r, resolvedCab);
             r.setStatus(RideStatus.PENDING);
@@ -248,9 +271,12 @@ public class DispatchService {
      * Returns false if the OTP is wrong without throwing.
      * On success, all rides in the batch transition to IN_TRANSIT.
      * Accepts both ACCEPTED and ARRIVED statuses.
+     *
+     * Lock order: RideRequests only (no Cab mutation here).
      */
-    @Transactional
+    @Transactional(timeout = 30)
     public boolean startTrip(Long rideId, String otp) {
+        // Pre-check without lock for a cheap OTP rejection before acquiring any lock.
         RideRequest ride = rideRequestRepository.findById(rideId)
                 .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
 
@@ -259,10 +285,22 @@ public class DispatchService {
         }
 
         if (!otp.equals(ride.getDropoffOtp())) {
+            return false; // wrong OTP — no lock needed
+        }
+
+        // OTP matches — lock the full batch and re-validate before writing.
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
+
+        RideRequest lockedRide = batch.stream().filter(r -> r.getId().equals(rideId)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Ride " + rideId + " is no longer in an active batch"));
+        if (lockedRide.getStatus() != RideStatus.ACCEPTED && lockedRide.getStatus() != RideStatus.ARRIVED) {
+            throw new IllegalStateException("Ride " + rideId + " status changed concurrently");
+        }
+        // Re-check OTP on the locked row (guards against an OTP change between read and lock).
+        if (!otp.equals(lockedRide.getDropoffOtp())) {
             return false;
         }
 
-        List<RideRequest> batch = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.IN_TRANSIT);
         }
@@ -293,13 +331,24 @@ public class DispatchService {
 
         // 1. Lock Cab first.
         Cab cab = ride.getCab();
-        if (cab != null) {
-            cab = cabRepository.findByIdWithLock(cab.getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cab.getId()));
+        Long cabId = cab != null ? cab.getId() : null;
+        if (cabId != null) {
+            cab = cabRepository.findByIdWithLock(cabId)
+                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cabId));
         }
 
-        // 2. Lock RideRequests after Cab lock is held.
+        // 2. Lock RideRequests after Cab lock is held (ORDER BY id ASC).
         List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
+
+        // 3. Re-validate on locked row — prevent double-complete.
+        RideRequest lockedRide = batch.stream().filter(r -> r.getId().equals(rideId)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Ride " + rideId + " is no longer in an active batch"));
+        if (lockedRide.getStatus() == RideStatus.COMPLETED) {
+            throw new IllegalStateException("Trip is already completed");
+        }
+        if (lockedRide.getStatus() != RideStatus.IN_TRANSIT && lockedRide.getStatus() != RideStatus.ARRIVED) {
+            throw new IllegalStateException("Trip must be IN_TRANSIT or ARRIVED to complete");
+        }
 
         double completedBatchDistanceKm = batch.stream()
                 .map(RideRequest::getLocation)
@@ -324,13 +373,14 @@ public class DispatchService {
 
     // ── Generic Status Update (admin override) ────────────────────────────────
 
-    @Transactional
+    @Transactional(timeout = 30)
     public void updateTripStatus(String magicLinkId, RideStatus newStatus) {
         if (newStatus == RideStatus.COMPLETED || newStatus == RideStatus.PENDING) {
             throw new IllegalArgumentException("Cannot set status to " + newStatus + " via this endpoint");
         }
 
-        List<RideRequest> rides = rideRequestRepository.findByMagicLinkId(magicLinkId);
+        // Use the locking variant so concurrent admin overrides serialize correctly.
+        List<RideRequest> rides = rideRequestRepository.findByMagicLinkIdWithLock(magicLinkId);
         if (rides.isEmpty()) {
             throw new IllegalArgumentException("No rides found for magic link: " + magicLinkId);
         }
@@ -361,6 +411,14 @@ public class DispatchService {
 
         // Lock the full batch before mutating any row.
         List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
+
+        // Re-validate on the locked row — prevent duplicate markArrived calls.
+        RideRequest lockedRide = batch.stream().filter(r -> r.getId().equals(rideId)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Ride " + rideId + " is no longer in an active batch"));
+        if (lockedRide.getStatus() != RideStatus.ACCEPTED) {
+            throw new IllegalStateException("Ride " + rideId + " status changed concurrently; expected ACCEPTED, found " + lockedRide.getStatus());
+        }
+
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.ARRIVED);
         }
@@ -394,15 +452,27 @@ public class DispatchService {
 
         // 1. Lock Cab first.
         Cab cab = ride.getCab();
+        Long cabId = cab != null ? cab.getId() : null;
+        if (cabId != null) {
+            cab = cabRepository.findByIdWithLock(cabId)
+                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cabId));
+        }
+
+        // 2. Lock RideRequests after Cab lock is held (ORDER BY id ASC).
+        List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
+
+        // 3. Re-validate on locked row — prevent double-cancel.
+        RideRequest lockedRide = batch.stream().filter(r -> r.getId().equals(rideId)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Ride " + rideId + " is no longer in an active batch"));
+        if (lockedRide.getStatus() != RideStatus.ACCEPTED && lockedRide.getStatus() != RideStatus.ARRIVED) {
+            throw new IllegalStateException("Can only cancel ACCEPTED or ARRIVED rides (concurrent modification detected)");
+        }
+
+        // 4. Mutate now that both locks are held and status is confirmed.
         if (cab != null) {
-            cab = cabRepository.findByIdWithLock(cab.getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cab.getId()));
             cab.setStatus(CabStatus.AVAILABLE);
             cabRepository.save(cab);
         }
-
-        // 2. Lock RideRequests after Cab lock is held.
-        List<RideRequest> batch = rideRequestRepository.findByMagicLinkIdWithLock(ride.getMagicLinkId());
         for (RideRequest r : batch) {
             r.setStatus(RideStatus.CANCELLED);
             r.setMagicLinkId(null);

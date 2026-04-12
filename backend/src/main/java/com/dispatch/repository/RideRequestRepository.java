@@ -21,14 +21,32 @@ public interface RideRequestRepository extends JpaRepository<RideRequest, Long> 
     Optional<RideRequest> findFirstByMagicLinkId(String magicLinkId);
 
     /**
-     * Fetches all rides sharing the same magic-link batch and immediately
-     * acquires a PostgreSQL row-level exclusive lock on each row
-     * (SELECT … FOR UPDATE). Use this inside any transaction that will
-     * mutate the batch so that all callers acquire locks in a consistent
-     * order and deadlocks are avoided.
+     * Locks a single RideRequest row for update (SELECT … FOR UPDATE).
+     * Use when only a single ride row is written (e.g. guest cancel) and
+     * no other RideRequest rows in the same batch are mutated.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT r FROM RideRequest r WHERE r.magicLinkId = :magicLinkId")
+    @Query("SELECT r FROM RideRequest r WHERE r.id = :id")
+    Optional<RideRequest> findByIdWithLock(@Param("id") Long id);
+
+    /**
+     * Locks a set of rides by explicit IDs in ascending ID order
+     * (SELECT … FOR UPDATE ORDER BY id). Used by assignRides to lock
+     * pending rides before transitioning them to OFFERED.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM RideRequest r WHERE r.id IN :ids ORDER BY r.id ASC")
+    List<RideRequest> findAllByIdWithLock(@Param("ids") List<Long> ids);
+
+    /**
+     * Fetches all rides sharing the same magic-link batch and immediately
+     * acquires a PostgreSQL row-level exclusive lock on each row
+     * (SELECT … FOR UPDATE). Rows are always locked in ascending ID order
+     * to enforce a consistent lock-acquisition sequence across concurrent
+     * transactions and prevent circular-wait deadlocks.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM RideRequest r WHERE r.magicLinkId = :magicLinkId ORDER BY r.id ASC")
     List<RideRequest> findByMagicLinkIdWithLock(@Param("magicLinkId") String magicLinkId);
     List<RideRequest> findByCabIdAndStatusIn(Long cabId, List<RideStatus> statuses);
     List<RideRequest> findByStatusIn(List<RideStatus> statuses);

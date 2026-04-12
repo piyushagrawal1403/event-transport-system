@@ -125,14 +125,44 @@ public class RideService {
         return cancelRide(rideId, "GUEST");
     }
 
-    @Transactional
+    @Transactional(timeout = 30)
     public RideRequest cancelRide(Long rideId, String cancelledByRole) {
-        RideRequest ride = rideRequestRepository.findById(rideId)
+        // ── Step 1: read without lock — get cab ID & magicLinkId for lock ordering ──
+        RideRequest preview = rideRequestRepository.findById(rideId)
                 .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
 
         String actorRole = cancelledByRole == null ? "" : cancelledByRole.trim().toUpperCase();
         boolean cancelledByAdmin = "ADMIN".equals(actorRole);
 
+        // Quick pre-check (not authoritative — re-validated below after locking).
+        if (preview.getStatus() == RideStatus.COMPLETED) {
+            throw new IllegalStateException("Cannot cancel a completed ride");
+        }
+        if (preview.getStatus() == RideStatus.CANCELLED) {
+            throw new IllegalStateException("Ride is already cancelled");
+        }
+        if (preview.getStatus() == RideStatus.IN_TRANSIT) {
+            throw new IllegalStateException("Cannot cancel a ride that is already in transit — the driver has started the trip");
+        }
+
+        boolean wasDispatchedPreview = preview.getStatus() == RideStatus.OFFERED
+                || preview.getStatus() == RideStatus.ACCEPTED
+                || preview.getStatus() == RideStatus.ARRIVED;
+
+        // ── Step 2: lock Cab first (if dispatched) — always before RideRequest rows ──
+        Cab cab = preview.getCab();
+        Long cabId = (wasDispatchedPreview && cab != null) ? cab.getId() : null;
+        Cab lockedCab = null;
+        if (cabId != null) {
+            lockedCab = cabRepository.findByIdWithLock(cabId)
+                    .orElseThrow(() -> new IllegalArgumentException("Cab not found: " + cabId));
+        }
+
+        // ── Step 3: lock the single ride row (after cab) ──
+        RideRequest ride = rideRequestRepository.findByIdWithLock(rideId)
+                .orElseThrow(() -> new IllegalArgumentException("Ride not found: " + rideId));
+
+        // ── Step 4: re-validate on the locked row ──
         if (ride.getStatus() == RideStatus.COMPLETED) {
             throw new IllegalStateException("Cannot cancel a completed ride");
         }
@@ -143,30 +173,27 @@ public class RideService {
             throw new IllegalStateException("Cannot cancel a ride that is already in transit — the driver has started the trip");
         }
 
-        // Free the cab if this was the last active ride in the batch
-        // (IN_TRANSIT is excluded — we block cancellation above; ARRIVED is still allowed)
         boolean wasDispatched = ride.getStatus() == RideStatus.OFFERED
                 || ride.getStatus() == RideStatus.ACCEPTED
                 || ride.getStatus() == RideStatus.ARRIVED;
 
-        if (wasDispatched && ride.getMagicLinkId() != null) {
-            Cab cab = ride.getCab();
-            if (cab != null) {
-                List<RideRequest> siblingRides = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
-                long activeCount = siblingRides.stream()
-                        .filter(r -> !r.getId().equals(rideId)
-                                && r.getStatus() != RideStatus.CANCELLED
-                                && r.getStatus() != RideStatus.COMPLETED)
-                        .count();
-                if (activeCount == 0) {
-                    cab.setStatus(CabStatus.AVAILABLE);
-                    cabRepository.save(cab);
-                }
+        // ── Step 5: conditionally free the cab ──
+        // Siblings are only counted (not written), so no lock on them is needed.
+        if (wasDispatched && ride.getMagicLinkId() != null && lockedCab != null) {
+            List<RideRequest> siblingRides = rideRequestRepository.findByMagicLinkId(ride.getMagicLinkId());
+            long activeCount = siblingRides.stream()
+                    .filter(r -> !r.getId().equals(rideId)
+                            && r.getStatus() != RideStatus.CANCELLED
+                            && r.getStatus() != RideStatus.COMPLETED)
+                    .count();
+            if (activeCount == 0) {
+                lockedCab.setStatus(CabStatus.AVAILABLE);
+                cabRepository.save(lockedCab);
             }
         }
 
+        // ── Step 6: record incident and mark cancelled ──
         rideIncidentService.recordGuestCancelled(ride);
-
         ride.setStatus(RideStatus.CANCELLED);
 
         if (cancelledByAdmin) {
@@ -176,22 +203,16 @@ public class RideService {
                     String.format("Your ride request #%d was cancelled by admin.", rideId)
             );
         } else {
-            // Notify admins when a guest cancels so operations can track churn.
             pushNotificationService.sendPushToAdmins("Guest Cancelled Ride",
                     String.format("Guest %s cancelled ride #%d", ride.getGuestName(), rideId));
         }
 
-        // Notify driver only if this ride had already been dispatched to a cab
         if (wasDispatched && ride.getCab() != null) {
             String driverPhone = ride.getCab().getDriverPhone();
-
-
             String driverTitle = cancelledByAdmin ? "Ride Cancelled by Admin" : "Ride Cancelled by Guest";
             String driverMessage = cancelledByAdmin
                     ? String.format("Ride #%d was cancelled by admin. You are now available.", rideId)
                     : String.format("Ride #%d was cancelled by the guest. You are now available.", rideId);
-
-            // Notify driver about cancellation context.
             if (driverPhone != null) {
                 pushNotificationService.sendPushToDriver(driverPhone, driverTitle, driverMessage);
             }

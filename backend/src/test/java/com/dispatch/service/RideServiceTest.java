@@ -124,6 +124,7 @@ class RideServiceTest {
     void cancelRide_byAdmin_notifiesGuestAndNotAdmins() {
         RideRequest ride = cancellableRide(10L, RideStatus.PENDING, null);
         when(rideRequestRepository.findById(10L)).thenReturn(Optional.of(ride));
+        when(rideRequestRepository.findByIdWithLock(10L)).thenReturn(Optional.of(ride));
         when(rideRequestRepository.save(any(RideRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
         RideRequest result = rideService.cancelRide(10L, "ADMIN");
@@ -137,6 +138,7 @@ class RideServiceTest {
     void cancelRide_byGuest_notifiesAdmins() {
         RideRequest ride = cancellableRide(11L, RideStatus.PENDING, null);
         when(rideRequestRepository.findById(11L)).thenReturn(Optional.of(ride));
+        when(rideRequestRepository.findByIdWithLock(11L)).thenReturn(Optional.of(ride));
         when(rideRequestRepository.save(any(RideRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
         RideRequest result = rideService.cancelRide(11L, "GUEST");

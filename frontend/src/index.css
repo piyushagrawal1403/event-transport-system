@@ -231,3 +231,93 @@
     transition: none !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PREVIEW STYLES - Wedding Carnival Theme
+   Isolated classes (preview-*) for design preview without affecting existing UI
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  /* Background - Warm ivory with subtle texture */
+  .preview-app-bg {
+    min-height: 100dvh;
+    background: linear-gradient(165deg, #FDF6EC 0%, #F9E4D4 50%, #FDF6EC 100%);
+  }
+
+  /* Top bar - Rose-gold to warm brown gradient */
+  .preview-topbar {
+    background: linear-gradient(135deg, #C9736A 0%, #A65D55 50%, #8B4D45 100%);
+    box-shadow: 0 4px 20px rgba(201, 115, 106, 0.3);
+  }
+
+  /* Main cards - Cream with warm shadows */
+  .preview-card {
+    @apply rounded-3xl border backdrop-blur-sm transition-all duration-300;
+    background: linear-gradient(145deg, #FFFDF9 0%, #FDF6EC 100%);
+    border-color: rgba(201, 115, 106, 0.15);
+    box-shadow: 
+      0 8px 24px rgba(139, 77, 69, 0.08),
+      0 2px 8px rgba(139, 77, 69, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .preview-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 
+      0 12px 32px rgba(201, 115, 106, 0.12),
+      0 4px 12px rgba(139, 77, 69, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  /* Celebration banner card - Soft blush with sparkle effect */
+  .preview-celebration-card {
+    @apply rounded-3xl;
+    background: linear-gradient(135deg, #FFF5F0 0%, #F9E4D4 50%, #FDF0E8 100%);
+    border: 1.5px solid rgba(201, 115, 106, 0.2);
+    box-shadow: 
+      0 8px 24px rgba(201, 115, 106, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  /* Icon tiles - Gradient backgrounds */
+  .preview-icon-tile {
+    background: linear-gradient(145deg, #FFF5F0 0%, #F9E4D4 100%);
+    border: 1px solid rgba(201, 115, 106, 0.15);
+    box-shadow: 
+      0 4px 12px rgba(201, 115, 106, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  /* Icon with glow effect */
+  .preview-icon-glow {
+    background: linear-gradient(145deg, #FFF5F0 0%, #FFE8E0 100%);
+    box-shadow: 
+      0 0 20px rgba(201, 115, 106, 0.2),
+      0 4px 12px rgba(201, 115, 106, 0.1);
+  }
+
+  /* Event chips in carousel */
+  .preview-event-chip {
+    background: linear-gradient(145deg, #FFFDF9 0%, #F9E4D4 100%);
+    border: 1px solid rgba(201, 115, 106, 0.12);
+    box-shadow: 0 2px 8px rgba(139, 77, 69, 0.06);
+  }
+
+  /* Primary button - Rose-gold gradient */
+  .preview-button-primary {
+    @apply rounded-2xl font-semibold text-white transition;
+    background: linear-gradient(135deg, #C9736A 0%, #A65D55 100%);
+    box-shadow: 0 8px 20px rgba(201, 115, 106, 0.25);
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.04em;
+  }
+
+  .preview-button-primary:hover {
+    filter: brightness(1.05);
+    box-shadow: 0 10px 28px rgba(201, 115, 106, 0.3);
+  }
+
+  .preview-button-primary:active {
+    transform: translateY(1px);
+  }
+}

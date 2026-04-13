@@ -7,6 +7,7 @@ import Dashboard from './pages/admin/Dashboard';
 import DriverDashboard from './pages/driver/DriverDashboard';
 import RequestRide from './pages/guest/RequestRide';
 import RideStatus from './pages/guest/RideStatus';
+import GuestHomePreview from './pages/preview/GuestHomePreview';
 import ProtectedRoute from './components/ProtectedRoute';
 import ServiceWorkerUpdateBanner from './components/ServiceWorkerUpdateBanner';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
@@ -155,6 +156,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/" element={<LoginPage />} />
+          <Route path="/preview" element={<GuestHomePreview />} />
           <Route path="/home" element={<ProtectedRoute allowedRoles={['GUEST']}><GuestHome /></ProtectedRoute>} />
           <Route path="/request" element={<ProtectedRoute allowedRoles={['GUEST']}><RequestRide /></ProtectedRoute>} />
           <Route path="/status" element={<ProtectedRoute allowedRoles={['GUEST']}><RideStatus /></ProtectedRoute>} />

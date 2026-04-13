@@ -210,7 +210,7 @@ export default function GuestHome() {
         <p className="text-sm" style={{ color: 'var(--w-muted)' }}>Choose a card to open details.</p>
 
         {/* Event image carousel — clickable, navigates to event detail */}
-        <EventCarousel />
+        <EventCarousel autoPlayDelayMs={8000} />
 
         <div className="grid grid-cols-2 gap-3">
           <button

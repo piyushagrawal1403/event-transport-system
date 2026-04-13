@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, MapPin, Clock } from 'lucide-react';
 import { getEvents, getMasterDataSnapshot, type EventItinerary } from '../api/client';
 
+const DEFAULT_AUTOPLAY_DELAY_MS = 7000;
+
 const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
@@ -14,7 +16,11 @@ function isLive(ev: EventItinerary) {
   return now >= new Date(ev.startTime).getTime() && now <= new Date(ev.endTime).getTime();
 }
 
-export default function EventCarousel() {
+type EventCarouselProps = {
+  autoPlayDelayMs?: number;
+};
+
+export default function EventCarousel({ autoPlayDelayMs = DEFAULT_AUTOPLAY_DELAY_MS }: EventCarouselProps) {
   const navigate = useNavigate();
   const [events, setEvents] = useState<EventItinerary[]>([]);
   const [current, setCurrent] = useState(0);
@@ -47,21 +53,30 @@ export default function EventCarousel() {
   const next = useCallback(() => setCurrent((c) => (c + 1) % total), [total]);
   const prev = useCallback(() => setCurrent((c) => (c - 1 + total) % total), [total]);
 
+  const clearAutoPlay = useCallback(() => {
+    if (autoPlayRef.current) {
+      clearInterval(autoPlayRef.current);
+      autoPlayRef.current = null;
+    }
+  }, []);
+
+  const startAutoPlay = useCallback(() => {
+    clearAutoPlay();
+    if (total <= 1) return;
+    autoPlayRef.current = setInterval(next, autoPlayDelayMs);
+  }, [autoPlayDelayMs, clearAutoPlay, next, total]);
+
   // Auto-play
   useEffect(() => {
-    if (total <= 1) return;
-    autoPlayRef.current = setInterval(next, 4500);
-    return () => {
-      if (autoPlayRef.current) clearInterval(autoPlayRef.current);
-    };
-  }, [next, total]);
+    startAutoPlay();
+    return clearAutoPlay;
+  }, [clearAutoPlay, startAutoPlay]);
 
   const pauseAutoPlay = () => {
-    if (autoPlayRef.current) clearInterval(autoPlayRef.current);
+    clearAutoPlay();
   };
   const resumeAutoPlay = () => {
-    if (total <= 1) return;
-    autoPlayRef.current = setInterval(next, 4500);
+    startAutoPlay();
   };
 
   // Touch / pointer drag
